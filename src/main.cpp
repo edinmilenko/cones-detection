@@ -1,9 +1,13 @@
 #include "labeler.hpp"
+#include "dataloader.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <vector>
 
 int main(int argc, char* argv[]) {
+    
+    dataLoader();
+    
     // path hardcodato per test, da cambiare
     const fs::path imagePath = "../dataset/example.jpg";
     const fs::path jsonPath = "../dataset/example.json";
