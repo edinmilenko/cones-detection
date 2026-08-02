@@ -17,5 +17,6 @@ struct Annotation {
 
 std::vector<Annotation> readAnnotations(const fs::path& annotationPath);
 bool drawAnnotation(cv::Mat& image, const Annotation& annotation);
+void labeler();
 
 #endif // LABELER_HPP

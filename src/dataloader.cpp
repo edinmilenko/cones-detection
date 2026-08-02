@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <unordered_map>
 
 
 void dataLoader()
@@ -27,8 +28,8 @@ void dataLoader()
     std::filesystem::path filePathSegmentation(pathSegmentation);
     std::filesystem::path filePathBBox(pathBBox);
 
-    std::vector<std::filesystem::path> imageFiles;
-    std::vector<std::filesystem::path> jsonFiles;
+    std::unordered_map<std::string, std::filesystem::path> imageFiles;
+    std::unordered_map<std::string, std::filesystem::path> jsonFiles;
 
     // Iterating through the files and saving them in two vectors, one for images and one for json files
     // First we go through pathSegmentation then through pathBBox
@@ -38,9 +39,18 @@ void dataLoader()
         std::string ext = entry.path().extension().string();
         
         if (ext == ".jpg" || ext == ".jpeg" || ext == ".png") {
-            imageFiles.push_back(entry.path());
+            imageFiles.emplace(entry.path().filename().string(), entry.path());
         } else if (ext == ".json") {
-            jsonFiles.push_back(entry.path());
+            const std::string jsonName = entry.path().filename().string();
+            if (jsonName == "meta.json") {
+                continue;
+            }
+
+            if (jsonName.size() <= 5 || jsonName.substr(jsonName.size() - 5) != ".json") {
+                continue;
+            }
+
+            jsonFiles.emplace(jsonName.substr(0, jsonName.size() - 5), entry.path());
         }
     }
     
@@ -50,22 +60,47 @@ void dataLoader()
         std::string ext = entry.path().extension().string();
         
         if (ext == ".jpg" || ext == ".jpeg" || ext == ".png") {
-            imageFiles.push_back(entry.path());
+            imageFiles.emplace(entry.path().filename().string(), entry.path());
         } else if (ext == ".json") {
-            jsonFiles.push_back(entry.path());
+            const std::string jsonName = entry.path().filename().string();
+            if (jsonName == "meta.json") {
+                continue;
+            }
+
+            if (jsonName.size() <= 5 || jsonName.substr(jsonName.size() - 5) != ".json") {
+                continue;
+            }
+
+            jsonFiles.emplace(jsonName.substr(0, jsonName.size() - 5), entry.path());
         }
     }
-    std::sort(imageFiles.begin(), imageFiles.end());
-    std::sort(jsonFiles.begin(), jsonFiles.end());
+
+    std::vector<std::string> sharedKeys;
+    sharedKeys.reserve(std::min(imageFiles.size(), jsonFiles.size()));
+
+    for (const auto& [stem, imagePath] : imageFiles) {
+        if (jsonFiles.find(stem) != jsonFiles.end()) {
+            sharedKeys.push_back(stem);
+        } else {
+            std::cout << "Missing JSON for source image: " << imagePath << std::endl;
+        }
+    }
+
+    std::sort(sharedKeys.begin(), sharedKeys.end(), [](const std::string& left, const std::string& right) {
+        try {
+            return std::stoll(left) < std::stoll(right);
+        } catch (...) {
+            return left < right;
+        }
+    });
 
     std::filesystem::path destination = "../dataset";
     auto fileNumber = 1;
     
-    // Saving all the images and json files in the dataset folder with a new name, starting from 1.jpg, 1.json, 2.jpg, 2.json, ...
-    for (size_t i = 0; i < imageFiles.size(); ++i) {
-        
-        const auto& oldImagePath = imageFiles[i];
-        const auto& oldJsonPath = jsonFiles[i];
+    // Saving only matched image/json pairs, renumbered as 1.jpg, 1.json, 2.jpg, 2.json, ...
+    for (const std::string& key : sharedKeys) {
+        const auto& oldImagePath = imageFiles.at(key);
+        const auto& oldJsonPath = jsonFiles.at(key);
 
         std::string newImageName = std::to_string(fileNumber) + oldImagePath.extension().string();
         std::string newJsonName = std::to_string(fileNumber) + oldJsonPath.extension().string();
@@ -78,4 +113,6 @@ void dataLoader()
 
         fileNumber++;
     }
+
+    std::cout << "Dataset prepared with " << (fileNumber - 1) << " matched image/json pair(s)." << std::endl;
 }

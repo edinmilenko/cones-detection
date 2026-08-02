@@ -2,3 +2,6 @@ CMakeFiles/
 dataset/
 srcOLD/
 build/
+fsoco_bounding_boxes_train/
+fsoco_segmentation_train-001/
+labeled/
