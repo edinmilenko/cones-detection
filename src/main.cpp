@@ -6,11 +6,12 @@
 int main(int argc, char* argv[]) {
     
     try {
-        //  LEAVE DISABLED after first run
+        //  LEAVE DISABLED for first run only
         //  altrimenti rifa ogni volta, o cambiamo con un check oppure documentiamo dove mettere i tre zip prima della prima run
-        dataLoader();
+        //  valutare check hardcodato?
+        //dataLoader();
 
-        // labeler sarà da togliere dalla consegna
+        // labeler sarà da togliere dalla consegna, credo sia utile solo per fare bene i punti 2
         labeler();
 
     } catch (const std::exception& e) {

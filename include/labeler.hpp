@@ -8,10 +8,18 @@
 
 namespace fs = std::filesystem;
 
-// represents a single bounding box annotation
+enum class AnnotationGeometry {
+    Rectangle,
+    Bitmap,
+};
+
+// Represents either a rectangle, or a bitmap mask positioned at origin.
 struct Annotation {
+    AnnotationGeometry geometry = AnnotationGeometry::Rectangle;
     cv::Point topLeft;
     cv::Point bottomRight;
+    cv::Mat mask;
+    cv::Point origin;
     std::string label;
 };
 

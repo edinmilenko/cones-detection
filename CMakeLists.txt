@@ -7,6 +7,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(nlohmann_json REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(ZLIB REQUIRED)
 
 include_directories(${OpenCV_INCLUDE_DIRS})
 include_directories(include)
@@ -17,4 +18,4 @@ add_executable(main
     src/dataloader.cpp 
 )
 
-target_link_libraries(main ${OpenCV_LIBS} nlohmann_json::nlohmann_json)
+target_link_libraries(main ${OpenCV_LIBS} nlohmann_json::nlohmann_json ZLIB::ZLIB)
