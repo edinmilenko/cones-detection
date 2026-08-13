@@ -1,3 +1,5 @@
+// Dataset utility: loads the project image/annotation data for the existing
+// application workflow. It is separate from the offline Haar training tools.
 #include "dataloader.hpp"
 #include <filesystem>
 #include <iostream>

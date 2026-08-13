@@ -1,5 +1,7 @@
 CMakeFiles/
 dataset/
+datasetFULL/
+training/
 srcOLD/
 build/
 fsoco_bounding_boxes_train/

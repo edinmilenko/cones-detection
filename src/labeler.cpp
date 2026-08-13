@@ -1,3 +1,5 @@
+// Annotation utility: provides the project-specific image labeling workflow
+// and writes the JSON annotations later consumed by the offline dataset tools.
 #include <opencv2/opencv.hpp>
 #include <nlohmann/json.hpp>
 #include <zlib.h>
