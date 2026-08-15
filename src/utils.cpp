@@ -11,7 +11,7 @@ static double calculateIoU(cv::Rect a, cv::Rect b){
 
 void evaluatePredictions(std::vector<Pred> predictions, std::vector<GT> ground, double iouThreshold){
 
-    std::sort(predictions.begin(), predictions.end(), [](const Pred a, const Pred b){return a.score > b.score;});
+    std::sort(predictions.begin(), predictions.end(), [](const Pred& a, const Pred& b){return a.score > b.score;});
     std::unordered_map<std::string, std::vector<int>> gtByImg;
 
     //map GT to the corresponding image to avoid comparing predictions to all bboxes of all images
@@ -21,9 +21,9 @@ void evaluatePredictions(std::vector<Pred> predictions, std::vector<GT> ground, 
     
     //greedy matching
     int tp = 0, fp = 0;
-    for(auto pred : predictions){
+    for(const auto& pred : predictions){
         int bestIdx = -1;
-        int bestIoU = 0;
+        double bestIoU = 0;
         for(int gt : gtByImg[pred.imgName]){
             if(ground[gt].matched){
                 continue;
@@ -44,6 +44,24 @@ void evaluatePredictions(std::vector<Pred> predictions, std::vector<GT> ground, 
         }
     }
 
-    //now process never matched gts
-    for(gt in )
+    //now calculate false negatives
+    int fn = 0;
+    for(const auto& gt : ground){
+        if(!gt.matched){fn++;}
+    }
+
+    double precision = 0.0;
+    if (tp + fp > 0) {
+        precision = double(tp) / (tp + fp);
+    }
+
+    double recall = 0.0;
+    if (tp + fn > 0) {
+        recall = double(tp) / (tp + fn);
+    }
+
+    double f1 = 0.0;
+    if (precision + recall > 0) {
+        f1 = 2 * precision * recall / (precision + recall);
+    }
 }
