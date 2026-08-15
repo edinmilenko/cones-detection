@@ -2,6 +2,7 @@
 #include "dataloader.hpp"
 #include <iostream>
 #include <stdexcept>
+#include "dataset_preprocessing.hpp"
 
 int main(int argc, char* argv[]) {
     
@@ -12,7 +13,10 @@ int main(int argc, char* argv[]) {
         //dataLoader();
 
         // labeler sarà da togliere dalla consegna, credo sia utile solo per fare bene i punti 2
-        labeler();
+        //labeler();
+        //std::string datasetDir = argv[1];
+        //csvDatasetMaker(datasetDir);
+        makeSplit("../data/dataset.csv", "../data");
 
     } catch (const std::exception& e) {
         std::cerr << "An error occurred: " << e.what() << std::endl;

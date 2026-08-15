@@ -16,6 +16,8 @@ add_executable(main
     src/main.cpp
     src/labeler.cpp
     src/dataloader.cpp 
+    src/dataset_preprocessing.cpp
+    src/utils.cpp
 )
 
 target_link_libraries(main ${OpenCV_LIBS} nlohmann_json::nlohmann_json ZLIB::ZLIB)
