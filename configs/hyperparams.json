@@ -1,0 +1,6 @@
+{
+    "scaleFactor": 1.1,
+    "minNeighbors": 3,
+    "minSize": [24, 36],
+    "maxSize": [200, 300]
+}
