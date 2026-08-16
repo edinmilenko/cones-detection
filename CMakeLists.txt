@@ -14,9 +14,15 @@ include_directories(include)
 
 add_executable(main
     src/main.cpp
-    src/labeler.cpp
-    src/dataloader.cpp
     src/viola-jones.cpp
+)
+
+add_executable(dataloader
+    src/dataloader.cpp
+)
+
+add_executable(labeler
+    src/labeler.cpp
 )
 
 add_executable(prepare_vj_dataset
@@ -31,7 +37,9 @@ add_executable(split_vj_dataset
     src/split_vj_dataset.cpp
 )
 
-target_link_libraries(main ${OpenCV_LIBS} nlohmann_json::nlohmann_json ZLIB::ZLIB)
+target_link_libraries(main ${OpenCV_LIBS})
+target_link_libraries(dataloader)
+target_link_libraries(labeler ${OpenCV_LIBS} nlohmann_json::nlohmann_json ZLIB::ZLIB)
 target_link_libraries(prepare_vj_dataset ${OpenCV_LIBS} nlohmann_json::nlohmann_json)
 target_link_libraries(analyze_vj_dataset ${OpenCV_LIBS} nlohmann_json::nlohmann_json)
 target_link_libraries(split_vj_dataset ${OpenCV_LIBS})
