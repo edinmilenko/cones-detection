@@ -1,5 +1,6 @@
 // Offline dataset splitter: partitions complete source images into train,
 // validation, and test manifests while validating negative-patch provenance.
+// Updated to handle split standing/fallen manifests and 36x36 negative patches.
 #include <algorithm>
 #include <array>
 #include <filesystem>
@@ -17,9 +18,10 @@ namespace fs = std::filesystem;
 
 namespace {
 
+constexpr int kNegativePatchSize = 36;
+
 struct SplitPercentages {
-    // Defaults are percentages, not fixed image counts, so they scale with a
-    // larger future dataset while still yielding a deterministic split.
+    // defaults percentages, not fixed image counts
     int train = 70;
     int validation = 15;
     int test = 15;
@@ -63,6 +65,23 @@ void validateSinglePathLine(const std::string& line, const std::string& fileName
     if (line.empty() || firstToken(line) != line) {
         throw std::runtime_error("Expected exactly one path per line in " + fileName + ": " + line);
     }
+}
+
+// Fallback per file mancanti nel caso in cui non ci siano oggetti di un certo tipo
+std::vector<std::string> readLinesSafe(const fs::path& path) {
+    std::vector<std::string> lines;
+    if (!fs::exists(path)) return lines; 
+    std::ifstream input(path);
+    if (!input) {
+        throw std::runtime_error("Cannot open: " + path.string());
+    }
+    std::string line;
+    while (std::getline(input, line)) {
+        if (!line.empty()) {
+            lines.push_back(line);
+        }
+    }
+    return lines;
 }
 
 std::vector<std::string> readLines(const fs::path& path) {
@@ -169,10 +188,12 @@ int main(int argc, char* argv[]) {
             throw std::runtime_error("Split percentages must be non-negative and sum to 100");
         }
 
-        const std::vector<std::string> annotationLines = readLines(trainingDir / "annotations.txt");
+        const std::vector<std::string> standingLines = readLinesSafe(trainingDir / "annotations_standing.txt");
+        const std::vector<std::string> fallenLines = readLinesSafe(trainingDir / "annotations_fallen.txt");
         const std::vector<std::string> negativeLines = readLines(trainingDir / "negatives.txt");
         const std::vector<NegativeSource> negativeSources = readNegativeSources(trainingDir / "negative_sources.txt");
         const std::vector<std::string> datasetImageLines = readLines(trainingDir / "dataset_images.txt");
+
         if (negativeLines.size() != negativeSources.size()) {
             throw std::runtime_error("negatives.txt and negative_sources.txt have different line counts");
         }
@@ -201,13 +222,13 @@ int main(int argc, char* argv[]) {
             if (datasetImages.count(record.sourcePath) != 1) {
                 throw std::runtime_error("Negative source is not in dataset_images.txt: " + record.sourcePath);
             }
-            // The preparer promises 24x24 background patches, matching the
-            // initial Haar training window; validate that contract here.
+            
             const cv::Mat patch = cv::imread(record.patchPath, cv::IMREAD_UNCHANGED);
-            if (patch.empty() || patch.cols != 24 || patch.rows != 24) {
-                throw std::runtime_error("Negative patch is not 24x24: " + record.patchPath);
+            if (patch.empty() || patch.cols != kNegativePatchSize || patch.rows != kNegativePatchSize) {
+                throw std::runtime_error("Negative patch is not " + std::to_string(kNegativePatchSize) + "x" + std::to_string(kNegativePatchSize) + ": " + record.patchPath);
             }
         }
+
         std::unordered_set<std::string> negativeListPaths;
         for (const std::string& negativeLine : negativeLines) {
             const std::string patchPath = firstToken(negativeLine);
@@ -222,14 +243,23 @@ int main(int argc, char* argv[]) {
             throw std::runtime_error("negatives.txt and negative_sources.txt reference different patches");
         }
 
-        std::size_t positiveObjects = 0;
+        std::size_t standingObjects = 0;
+        std::size_t fallenObjects = 0;
         std::unordered_set<std::string> annotationImages;
-        for (const std::string& annotationLine : annotationLines) {
-            const std::string imagePath = firstToken(annotationLine);
-            if (!annotationImages.insert(imagePath).second) {
-                throw std::runtime_error("Duplicate image in annotations.txt: " + imagePath);
+
+        for (const std::string& line : standingLines) {
+            const std::string imagePath = firstToken(line);
+            annotationImages.insert(imagePath);
+            standingObjects += validateAnnotationLine(line);
+            if (datasetImages.count(imagePath) != 1) {
+                throw std::runtime_error("Annotation image is not in dataset_images.txt: " + imagePath);
             }
-            positiveObjects += validateAnnotationLine(annotationLine);
+        }
+
+        for (const std::string& line : fallenLines) {
+            const std::string imagePath = firstToken(line);
+            annotationImages.insert(imagePath);
+            fallenObjects += validateAnnotationLine(line);
             if (datasetImages.count(imagePath) != 1) {
                 throw std::runtime_error("Annotation image is not in dataset_images.txt: " + imagePath);
             }
@@ -267,18 +297,28 @@ int main(int argc, char* argv[]) {
         fs::create_directories(splitsDir);
         fs::create_directories(manifestsDir);
 
-        std::array<std::size_t, 3> splitPositiveObjects{};
+        std::array<std::size_t, 3> splitStandingObjects{};
+        std::array<std::size_t, 3> splitFallenObjects{};
         std::array<std::size_t, 3> splitNegativeSamples{};
 
         for (std::size_t split = 0; split < names.size(); ++split) {
-            std::vector<std::string> splitAnnotations;
+            std::vector<std::string> splitStanding;
+            std::vector<std::string> splitFallen;
             std::vector<std::string> splitNegatives;
-            for (const std::string& annotationLine : annotationLines) {
-                if (splitImages[split].count(firstToken(annotationLine)) != 0) {
-                    splitAnnotations.push_back(annotationLine);
-                    splitPositiveObjects[split] += validateAnnotationLine(annotationLine);
+
+            for (const std::string& line : standingLines) {
+                if (splitImages[split].count(firstToken(line)) != 0) {
+                    splitStanding.push_back(line);
+                    splitStandingObjects[split] += validateAnnotationLine(line);
                 }
             }
+            for (const std::string& line : fallenLines) {
+                if (splitImages[split].count(firstToken(line)) != 0) {
+                    splitFallen.push_back(line);
+                    splitFallenObjects[split] += validateAnnotationLine(line);
+                }
+            }
+
             for (const NegativeSource& record : negativeSources) {
                 if (splitImages[split].count(record.sourcePath) != 0) {
                     splitNegatives.push_back(record.patchPath);
@@ -289,7 +329,8 @@ int main(int argc, char* argv[]) {
             std::vector<std::string> imageList(splitImages[split].begin(), splitImages[split].end());
             std::sort(imageList.begin(), imageList.end());
             writeLines(splitsDir / (names[split] + "_images.txt"), imageList);
-            writeLines(manifestsDir / (names[split] + "_annotations.txt"), splitAnnotations);
+            writeLines(manifestsDir / (names[split] + "_annotations_standing.txt"), splitStanding);
+            writeLines(manifestsDir / (names[split] + "_annotations_fallen.txt"), splitFallen);
             writeLines(manifestsDir / (names[split] + "_negatives.txt"), splitNegatives);
         }
 
@@ -304,12 +345,14 @@ int main(int argc, char* argv[]) {
                << "  total images: " << images.size() << "\n"
                << "  annotated images: " << annotationImages.size() << "\n"
                << "  images without GT: " << images.size() - annotationImages.size() << "\n"
-               << "  bounding boxes: " << positiveObjects << "\n"
+               << "  standing boxes: " << standingObjects << "\n"
+               << "  fallen boxes: " << fallenObjects << "\n"
                << "  negative patches: " << negativeSources.size() << "\n"
                << "Split\n";
         for (std::size_t split = 0; split < names.size(); ++split) {
             report << "  " << names[split] << ": " << counts[split] << " images, "
-                   << splitPositiveObjects[split] << " positive objects, "
+                   << splitStandingObjects[split] << " standing, "
+                   << splitFallenObjects[split] << " fallen, "
                    << splitNegativeSamples[split] << " negative patches\n";
         }
         report << "Leakage\n"
@@ -323,8 +366,9 @@ int main(int argc, char* argv[]) {
 
         std::cout << "Split seed: " << seed << '\n';
         std::cout << "Annotated images: " << annotationImages.size() << '\n';
-        std::cout << "Positive objects: " << positiveObjects << '\n';
-        std::cout << "Negative samples: " << negativeSources.size() << " (all 24x24)\n";
+        std::cout << "Standing objects: " << standingObjects << '\n';
+        std::cout << "Fallen objects: " << fallenObjects << '\n';
+        std::cout << "Negative samples: " << negativeSources.size() << " (all " << kNegativePatchSize << "x" << kNegativePatchSize << ")\n";
         std::cout << "Images: " << images.size() << " (train=" << counts[0]
                   << ", val=" << counts[1] << ", test=" << counts[2] << ")\n";
         std::cout << "Anti-leakage check: passed\n";
