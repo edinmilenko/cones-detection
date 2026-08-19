@@ -1,7 +1,7 @@
 #include "utils.hpp"
 
 //returns iou
-static double calculateIoU(cv::Rect a, cv::Rect b){
+double calculateIoU(cv::Rect a, cv::Rect b){
     int intersectionArea = (a & b).area();
     if (intersectionArea == 0){
         return 0.0;

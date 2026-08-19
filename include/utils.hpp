@@ -1,3 +1,5 @@
+#pragma once
+
 #include <opencv2/core/types.hpp>
 #include <opencv2/opencv.hpp>
 #include <filesystem>
@@ -16,6 +18,6 @@ struct GT {
     cv::Rect bbox;
     bool matched = false;
 };
-static double calculateIoU(cv::Rect a, cv::Rect b);
+double calculateIoU(cv::Rect a, cv::Rect b);
 void evaluatePredictions(std::vector<Pred> predictions, std::vector<GT> ground, double iouThreshold);
 
