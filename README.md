@@ -122,6 +122,29 @@ The detector applies NMS to filter duplicate detections of the same cone. This i
 
 **Note:** These values are starting points. Tune based on validation results.
 
+## Detection Parameters
+
+The detector parameters are configured in `configs/hyperparams.json`:
+
+```json
+{
+    "scaleFactor": 1.1,
+    "minNeighbors": 3,
+    "minSize": [16, 24],
+    "maxSize": [200, 300]
+}
+```
+
+**Parameter Rationale:**
+
+- **minSize: [16, 24]** - Reduced from [24, 36] based on dataset analysis showing 52% of cones are <20px wide and 56% are <30px tall. This ensures detection of smaller cones without missing them.
+
+- **scaleFactor: 1.1** - Provides good scale coverage for cones ranging from 16px to 200px.
+
+- **minNeighbors: 3** - Conservative setting for higher recall. Test 4-6 for higher precision.
+
+**Note:** These values are starting points. Tune based on validation results.
+
 ## Source structure
 
 - `src/analyze_vj_dataset.cpp`: offline bounding-box analysis.
