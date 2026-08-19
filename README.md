@@ -107,6 +107,21 @@ After an external trainer has produced a `cascade.xml`, run:
 
 `main` loads the XML with `cv::CascadeClassifier`, runs `detectMultiScale`, and writes a debug image with detections. The detector's runtime parameters are independent of the training process and should be tuned later using validation data.
 
+## Non-Maximum Suppression (NMS)
+
+The detector applies NMS to filter duplicate detections of the same cone. This is necessary because the Viola-Jones cascade may detect the same cone multiple times at different scales.
+
+**IoU Threshold: 0.4** - Only suppresses detections with >40% overlap, allowing detection of cones that are close but not occluded.
+
+**Adaptive Center Distance Threshold** - The suppression distance scales with cone size:
+- Formula: `0.75 × max(width, height)`
+- Small cones (~20px): threshold ≈ 15px
+- Large cones (~400px): threshold ≈ 300px
+
+**Rationale:** Dataset (a subset of the whole one) analysis shows median cone size is 19×27px, with 52% of cones <20px wide and 56% <30px tall. A fixed threshold would either miss small cones or suppress nearby large cones. The adaptive threshold ensures fair treatment across all cone sizes.
+
+**Note:** These values are starting points. Tune based on validation results.
+
 ## Source structure
 
 - `src/analyze_vj_dataset.cpp`: offline bounding-box analysis.
