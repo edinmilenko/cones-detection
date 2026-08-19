@@ -63,16 +63,16 @@ images/dataset/scene003.jpg
 ```
 
 **Behavior:**
-- Recursively scans directory for `.jpg`, `.jpeg`, `.png` files
-- Processes all found images
-- Preserves subdirectory structure in output (optional)
+- Scans the specified directory (not subdirectories) for `.jpg`, `.jpeg`, and `.png` files, case-insensitively
+- Processes files in alphabetical order
+- Creates the output directory when it does not exist
 
 **Example:**
 ```bash
 ./build/main images/dataset/ cascade.xml configs/hyperparams.json results/
 ```
 
-**Output:** All images in `images/dataset/` are processed, output saved to `results/<basename>_detected.jpg`
+**Output:** All images in `images/dataset/` are processed, output saved to `results/<basename>_detected.jpg`. Duplicate basenames receive a numeric suffix to avoid overwriting a prior result.
 
 ---
 
@@ -149,10 +149,11 @@ wait
 
 The batch processor includes robust error handling:
 
-- **Missing images:** Skipped with warning, processing continues
+- **Missing or unreadable images:** Skipped with warning, processing continues
 - **Corrupt cascade:** All processing stops with clear error message
 - **Invalid config:** Detected before processing begins
 - **Write failures:** Logged per-image, processing continues
+- **Exit status:** `0` when every image succeeds; `2` when one or more batch items fail
 
 **Example error output:**
 ```

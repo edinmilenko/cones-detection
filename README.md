@@ -102,10 +102,34 @@ positives.vec + training/manifests/train_negatives.txt
 After an external trainer has produced a `cascade.xml`, run:
 
 ```bash
-./build/main <input_image> <cascade.xml> [output_image]
+./build/main <input_image> <cascade.xml> <config.json> [output_image]
 ```
 
 `main` loads the XML with `cv::CascadeClassifier`, runs `detectMultiScale`, and writes a debug image with detections. The detector's runtime parameters are independent of the training process and should be tuned later using validation data.
+
+## Batch Processing
+
+The runtime detector can also process a batch of images, using the same cascade and inference configuration for every image.
+
+### List file mode
+
+```bash
+./build/main <list_of_images.txt> <cascade.xml> <config.json> <output_dir>
+```
+
+The list must use a `.txt` extension and contain one image path per line. Blank lines and lines beginning with `#` are ignored. Relative image paths are resolved relative to the list file, so lists can be moved together with their images.
+
+### Directory mode
+
+```bash
+./build/main <directory> <cascade.xml> <config.json> <output_dir>
+```
+
+This scans that directory (not subdirectories) for `.jpg`, `.jpeg`, and `.png` files, case-insensitively. Files are processed in a stable alphabetical order.
+
+Both batch modes create the output directory if necessary and write `<basename>_detected.jpg` for each successful image. If a batch contains duplicate basenames, later files receive a numeric suffix such as `_detected_2.jpg` so no result is overwritten. A failure to read, detect, or write one image does not stop the rest of the batch; the final summary reports the totals and the program exits nonzero when any image failed.
+
+For the fuller usage notes and examples, see [BATCH_PROCESSING.md](BATCH_PROCESSING.md).
 
 ## Non-Maximum Suppression (NMS)
 
@@ -153,4 +177,3 @@ The detector parameters are configured in `configs/hyperparams.json`:
 - `src/viola-jones.cpp`: runtime OpenCV cascade wrapper and drawing helper.
 - `src/main.cpp`: runtime command-line entry point.
 - `src/labeler.cpp` and `src/dataloader.cpp`: existing dataset/annotation support utilities.
-
