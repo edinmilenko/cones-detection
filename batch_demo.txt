@@ -1,0 +1,7 @@
+# Sample list of images for batch processing
+# Each line should contain a relative or absolute path to an image
+images/dataset/image_001.jpg
+images/dataset/image_002.jpg
+images/dataset/image_003.jpg
+images/dataset/image_004.jpg
+images/dataset/image_005.jpg

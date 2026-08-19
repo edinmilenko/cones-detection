@@ -153,3 +153,4 @@ The detector parameters are configured in `configs/hyperparams.json`:
 - `src/viola-jones.cpp`: runtime OpenCV cascade wrapper and drawing helper.
 - `src/main.cpp`: runtime command-line entry point.
 - `src/labeler.cpp` and `src/dataloader.cpp`: existing dataset/annotation support utilities.
+

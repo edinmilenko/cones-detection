@@ -4,6 +4,7 @@
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <vector>
+#include <filesystem>
 
 // Minimal OpenCV Viola-Jones cone detector.
 // The actual cascade is loaded from an external XML file and reused for all detections.
