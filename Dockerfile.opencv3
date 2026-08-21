@@ -1,0 +1,25 @@
+# Dockerfile.opencv3
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone and build OpenCV 3.4 explicitly for the training tools
+RUN git clone --branch 3.4 --depth 1 https://github.com/opencv/opencv.git /opt/opencv
+WORKDIR /opt/opencv/build
+RUN cmake -D CMAKE_BUILD_TYPE=RELEASE \
+          -D CMAKE_INSTALL_PREFIX=/usr/local \
+          -D BUILD_opencv_apps=ON \
+          -D BUILD_SHARED_LIBS=OFF \
+          .. && \
+    make -j$(nproc) && make install
+
+WORKDIR /workspace

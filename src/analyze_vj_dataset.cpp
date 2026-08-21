@@ -78,6 +78,7 @@ struct Stats {
     std::size_t heightLt50 = 0;
 };
 
+// Lists all image files (jpg, jpeg, png) in datasetDir, sorted by path
 std::vector<fs::path> listDatasetImageFiles(const fs::path& datasetDir) {
     std::vector<fs::path> files;
     for (const auto& entry : fs::directory_iterator(datasetDir)) {
@@ -94,6 +95,7 @@ std::vector<fs::path> listDatasetImageFiles(const fs::path& datasetDir) {
     return files;
 }
 
+// Linear interpolation to get value at given percentile p of a sorted list
 double percentile(const std::vector<double>& values, double p) {
     if (values.empty()) {
         return 0.0;
@@ -124,6 +126,7 @@ double percentile(const std::vector<double>& values, double p) {
     return sorted[lower] * (1.0 - fraction) + sorted[upper] * fraction;
 }
 
+// Return middle element(s) of a list (average of two middles if even size)
 double medianValue(const std::vector<double>& values) {
     if (values.empty()) {
         return 0.0;
@@ -139,6 +142,7 @@ double medianValue(const std::vector<double>& values) {
     return sorted[mid];
 }
 
+// Parses JSON annotation, extracts rectangle objects, computes width/height/area, returns vector of BBox
 std::vector<BBox> readBoxesForImage(const fs::path& jsonPath, const cv::Size& imageSize) {
     std::ifstream input(jsonPath);
     if (!input) {
@@ -189,6 +193,7 @@ std::vector<BBox> readBoxesForImage(const fs::path& jsonPath, const cv::Size& im
     return boxes;
 }
 
+// Computes min, max, mean, median, percentiles, and threshold counts from a vector of BBox
 void updateStats(Stats& stats, const std::vector<BBox>& boxes) {
     if (boxes.empty()) {
         return;
@@ -346,7 +351,12 @@ int main(int argc, char* argv[]) {
         std::cout << "Out-of-bounds boxes: " << invalidBoxes << "\n\n";
 
         if (!allWidths.empty()) {
-            updateStats(stats, std::vector<BBox>{});
+            // NOTE: updateStats() is passed an empty vector and returns immediately.
+            // The statistics are computed inline below to maintain consistency with
+            // the manual counting logic (std::count_if) used for threshold percentages.
+            // This duplication may be unnecessary and could be refactored in the future.
+            // updateStats(stats, std::vector<BBox>{});
+            
             std::sort(allWidths.begin(), allWidths.end());
             std::sort(allHeights.begin(), allHeights.end());
             std::sort(allAreas.begin(), allAreas.end());
