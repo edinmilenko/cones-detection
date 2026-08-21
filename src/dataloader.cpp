@@ -22,8 +22,8 @@ void dataLoader()
         throw std::runtime_error("Failed to create directory");
     }
 
-    const std::string pathSegmentation = "../fsoco_segmentation_train";
-    const std::string pathBBox = "../fsoco_bounding_boxes_train";
+    const std::string pathSegmentation = "../fsoco_segmentation_train-001/fsoco_segmentation_train";
+    const std::string pathBBox = "../fsoco_bounding_boxes_train/fsoco_bounding_boxes_train";
 
     std::filesystem::path filePathSegmentation(pathSegmentation);
     std::filesystem::path filePathBBox(pathBBox);
