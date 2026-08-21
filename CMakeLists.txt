@@ -18,6 +18,7 @@ add_executable(main
     src/dataset_preprocessing.cpp
     src/utils.cpp
     src/color_proposals.cpp
+    src/patches.cpp
     src/hog.cpp
 )
 
