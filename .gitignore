@@ -9,3 +9,5 @@ fsoco_segmentation_train-001/
 labeled/
 segmentation_test
 .DS_Store
+val_images.txt
+validation_results/

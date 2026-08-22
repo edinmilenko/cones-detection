@@ -187,8 +187,8 @@ Batch mode uses the same configuration as single image mode via `configs/hyperpa
 
 ```json
 {
-    "scaleFactor": 1.1,
-    "minNeighbors": 3,
+    "scaleFactor": 1.2,
+    "minNeighbors": 15,
     "minSize": [16, 24],
     "maxSize": [200, 300]
 }
