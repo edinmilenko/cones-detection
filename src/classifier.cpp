@@ -2,11 +2,12 @@
 
 ConeClass classifyOrangeCone(const cv::Mat& hsv_roi)
 {
-    cv::Scalar minimum(0, 0, 150);
-    cv::Scalar maximum(179, 60, 255);
+    cv::Scalar lowerBoundWHite(0, 0, 150);
+    cv::Scalar upperBoundWhite(179, 60, 255);
 
     cv::Mat whiteMask;
-    cv::inRange(hsv_roi, minimum, maximum, whiteMask);
+
+    cv::inRange(hsv_roi, lowerBoundWHite, upperBoundWhite, whiteMask);
     // Applying closing for noise reduction and have more compact regions
     cv::morphologyEx(whiteMask, whiteMask, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 3)));
     
@@ -49,32 +50,40 @@ std::vector<int> classifier(const cv::Mat& image, const std::vector<cv::Rect>& b
         cv::cvtColor(roi, hsv_roi, cv::COLOR_BGR2HSV);
 
         // For each Scalar we have on slot for Hue (which ranges from 0-179), Saturation (which ranges from 0-255) and Value (which ranges from 0-255)
-        cv::Scalar lowerBoundYellow(25, 150, 100);
-        cv::Scalar upperBoundYellow(35, 255, 255);
-        cv::Scalar lowerBoundOrange(5, 150, 100);
-        cv::Scalar upperBoundOrange(24, 255, 255);
-        cv::Scalar lowerBoundBlue(90, 150, 100);
+        cv::Scalar lowerBoundYellow(21, 60, 50);
+        cv::Scalar upperBoundYellow(40, 255, 255);
+        cv::Scalar lowerBoundBlack(0, 0, 0);
+        cv::Scalar upperBoundBlack(179, 50, 50);
+        cv::Scalar lowerBoundOrange(5, 60, 50);
+        cv::Scalar upperBoundOrange(20, 255, 255);
+        cv::Scalar lowerBoundBlue(90, 50, 40);
         cv::Scalar upperBoundBlue(130, 255, 255);
-
+        
         // Create the binary mask filtering keeping only pixel if they are eqaul to the color we are analyzing
         // To filter we check every pixel to be in between lower bound and upper bound
+        // We combine yellow and black to combine some edge case where the yelow cone is cut-off from the scene and the brightness is bad
         cv::Mat maskYellow;
+        cv::Mat maskBlack;
         cv::Mat maskOrange;
         cv::Mat maskBlue;
+
         cv::inRange(hsv_roi, lowerBoundYellow, upperBoundYellow, maskYellow);
+        cv::inRange(hsv_roi, lowerBoundBlack, upperBoundBlack, maskBlack);
         cv::inRange(hsv_roi, lowerBoundOrange, upperBoundOrange, maskOrange);
         cv::inRange(hsv_roi, lowerBoundBlue, upperBoundBlue, maskBlue);
 
         //Count the number of pixel of each color to classify the cone
         int countYellow = cv::countNonZero(maskYellow);
-        int countOrange = cv::countNonZero(maskOrange);
-        int countBlue = cv::countNonZero(maskBlue);
+        int countBlack = cv::countNonZero(maskBlack);
+        int yellowConeScore = countYellow + countBlack;
+        int orangeConeScore = cv::countNonZero(maskOrange);
+        int blueConeScore = cv::countNonZero(maskBlue);
 
-        if (countYellow > countBlue && countYellow > countOrange)
+        if (yellowConeScore > blueConeScore && yellowConeScore > orangeConeScore)
         {
             labels.push_back(static_cast<int>(ConeClass::YELLOW));
         }
-        else if (countBlue > countYellow && countBlue > countOrange)
+        else if (blueConeScore > yellowConeScore && blueConeScore > orangeConeScore)
         {
             labels.push_back(static_cast<int>(ConeClass::BLUE));
         }
