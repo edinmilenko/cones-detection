@@ -30,18 +30,13 @@ bool loadCascade(cv::CascadeClassifier& cascade, const std::string& xmlPath) {
     return cascade.load(xmlPath);
 }
 
-// Compute Intersection over Union between two rectangles
-double iou(const cv::Rect& a, const cv::Rect& b) {
+// Compute Intersection over Minimum (IoM) to handle concentric boxes
+double intersectionOverMinimum(const cv::Rect& a, const cv::Rect& b) {
     const cv::Rect intersection = a & b;
     if (intersection.area() == 0) {
         return 0.0;
     }
-
-    const double aArea = static_cast<double>(a.area());
-    const double bArea = static_cast<double>(b.area());
-    const double unionArea = aArea + bArea - intersection.area();
-
-    return intersection.area() / unionArea;
+    return static_cast<double>(intersection.area()) / std::min(a.area(), b.area());
 }
 
 // Compute center distance between two rectangles
@@ -51,21 +46,16 @@ double centerDistance(const cv::Rect& a, const cv::Rect& b) {
     return std::sqrt(std::pow(centerA.x - centerB.x, 2) + std::pow(centerA.y - centerB.y, 2));
 }
 
-// Compute adaptive center distance threshold based on bounding box size
-// For small cones (~20px), threshold is ~30px
-// For large cones (~400px), threshold is ~150px
-// Formula: 0.75 × max(width, height) gives a reasonable spacing threshold
+// Adaptive center distance threshold
 double adaptiveCenterDistanceThreshold(const cv::Rect& referenceBox) {
     return 0.75 * std::max(referenceBox.width, referenceBox.height);
 }
 
-// Non-Maximum Suppression for dense cone detection
-// Uses adaptive threshold based on bounding box size
-// NOTE: This is a starting point - thresholds should be tuned based on validation results
+// Non-Maximum Suppression utilizing IoM and adaptive center distances
 std::vector<cv::Rect> nonMaximumSuppression(
     const std::vector<cv::Rect>& detections,
-    double iouThreshold,
-    double defaultMinCenterDistance) {
+    double overlapThreshold) {
+    
     if (detections.empty()) {
         return detections;
     }
@@ -73,12 +63,11 @@ std::vector<cv::Rect> nonMaximumSuppression(
     std::vector<cv::Rect> filtered;
     std::vector<bool> suppressed(detections.size(), false);
 
-    // Sort by area (proxy for confidence) - larger area = higher confidence
+    // Sort by area (proxy for confidence: larger windows = higher cascade survival confidence)
     std::vector<size_t> indices(detections.size());
     std::iota(indices.begin(), indices.end(), 0);
     std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
-        return detections[a].height * detections[a].width >
-               detections[b].height * detections[b].width;
+        return detections[a].area() > detections[b].area();
     });
 
     for (size_t i = 0; i < indices.size(); ++i) {
@@ -94,16 +83,13 @@ std::vector<cv::Rect> nonMaximumSuppression(
         filtered.push_back(current);
 
         // Suppress all overlapping boxes
-        for (size_t j = 0; j < indices.size(); ++j) {
-            if (i == j || suppressed[indices[j]]) continue;
+        for (size_t j = i + 1; j < indices.size(); ++j) {
+            if (suppressed[indices[j]]) continue;
 
             const cv::Rect& other = detections[indices[j]];
             
-            // Adaptive NMS: suppress if BOTH conditions are met:
-            // 1. High IoU overlap (cones are very close/occluded)
-            // 2. Center distance is small (relative to cone size)
-            // Formula: 0.75 × max(width, height) gives ~30px for small cones, ~150px for large ones
-            if (iou(current, other) > iouThreshold &&
+            // Suppress if boxes overlap heavily (IoM) OR their centers are too close
+            if (intersectionOverMinimum(current, other) > overlapThreshold ||
                 centerDistance(current, other) < adaptiveDistance) {
                 suppressed[indices[j]] = true;
             }
@@ -120,6 +106,7 @@ std::vector<cv::Rect> detectCones(
     int minNeighbors,
     cv::Size minSize,
     cv::Size maxSize) {
+    
     if (image.empty()) {
         throw std::invalid_argument("Cannot detect cones in an empty image");
     }
@@ -127,11 +114,9 @@ std::vector<cv::Rect> detectCones(
         throw std::runtime_error("CascadeClassifier was not loaded from an XML file");
     }
 
-    const cv::Mat gray = toGray(image);
-
     std::vector<cv::Rect> detections;
     cascade.detectMultiScale(
-        gray,
+        toGray(image),
         detections,
         scaleFactor,
         minNeighbors,
@@ -139,15 +124,8 @@ std::vector<cv::Rect> detectCones(
         minSize,
         maxSize);
 
-    // Adaptive NMS for cones of varying sizes:
-    // - IoU 0.4: only suppress boxes with significant overlap
-    // - Center distance: adaptive (0.75 × max dimension)
-    //   - Small cone (20px): ~15px threshold
-    //   - Large cone (400px): ~300px threshold
-    // NOTE: These values are starting points - tune based on validation results
-    detections = nonMaximumSuppression(detections, 0.4, 40.0);
-
-    return detections;
+    // Hard threshold for IoM set to 0.45. 
+    return nonMaximumSuppression(detections, 0.45);
 }
 
 cv::Mat drawDetections(
