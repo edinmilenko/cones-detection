@@ -37,6 +37,12 @@ add_executable(split_vj_dataset
     src/split_vj_dataset.cpp
 )
 
+add_executable(hard_negative_miner
+    src/hard_negative_miner.cpp
+    src/viola-jones.cpp
+)
+target_link_libraries(hard_negative_miner ${OpenCV_LIBS} nlohmann_json::nlohmann_json ZLIB::ZLIB)
+
 target_link_libraries(main ${OpenCV_LIBS})
 target_link_libraries(dataloader)
 target_link_libraries(labeler ${OpenCV_LIBS} nlohmann_json::nlohmann_json ZLIB::ZLIB)
