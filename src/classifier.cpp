@@ -9,7 +9,7 @@ ConeClass classifyOrangeCone(const cv::Mat& hsv_roi)
 
     cv::inRange(hsv_roi, lowerBoundWhite, upperBoundWhite, whiteMask);
     // Applying closing for noise reduction and have more compact regions
-    cv::morphologyEx(whiteMask, whiteMask, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
+    cv::morphologyEx(whiteMask, whiteMask, cv::MORPH_OPEN, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 1)));
     
     // FindContours will find one or two blobs, whether it is a small or big cone. We store the contours in vector "contours" as point coordinates
     std::vector<std::vector<cv::Point>> contours;
@@ -30,14 +30,19 @@ ConeClass classifyOrangeCone(const cv::Mat& hsv_roi)
             float ratio = static_cast<float>(width) / height;
 
             // 3. Verify that the shape is horizontal (width > height) to exclude vertical reflections
-            if (ratio > 0.6f)
+            if (ratio > 1.4f)
             {
                 numberOfWhiteStrides++;
             }
         }
     }
     
-    if (numberOfWhiteStrides >= 2)
+    // Calculate the aspect ratio of the entire ROI bounding box (Height / Width)
+    // A high ratio (> 2.0) means the bounding box is tall and narrow (typical of big cones) 
+    // This is added because the cone might be very distant or very bright due to sun or external light
+    float roiRatio = static_cast<float>(hsv_roi.rows) / static_cast<float>(hsv_roi.cols);
+
+    if (numberOfWhiteStrides >= 2 || roiRatio > 2.0f)
     {
         return ConeClass::BIG_ORANGE;
     }
@@ -59,6 +64,17 @@ std::vector<int> classifier(const cv::Mat& image, const std::vector<cv::Rect>& b
         // Conversion from RGB to HSV to manipulate easily color ranges
         cv::Mat hsv_roi;
         cv::cvtColor(roi, hsv_roi, cv::COLOR_BGR2HSV);
+
+        std::vector<cv::Mat> hsv_channels;
+        cv::split(hsv_roi, hsv_channels); // Split into Hue, Saturation, and Value channels
+
+        // Apply CLAHE to the Value channel (index 2) to brighten shadows
+        // without washing out already bright colors like yellow or orange tahnks to the threshold 2.0
+        cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
+        clahe->apply(hsv_channels[2], hsv_channels[2]); 
+
+        // Merge the modified channels back into the HSV image
+        cv::merge(hsv_channels, hsv_roi);
 
         // For each Scalar we have on slot for Hue (which ranges from 0-179), Saturation (which ranges from 0-255) and Value (which ranges from 0-255)
         cv::Scalar lowerBoundYellow(16, 100, 50);
@@ -83,13 +99,37 @@ std::vector<int> classifier(const cv::Mat& image, const std::vector<cv::Rect>& b
         cv::inRange(hsv_roi, lowerBoundOrange, upperBoundOrange, maskOrange);
         cv::inRange(hsv_roi, lowerBoundBlue, upperBoundBlue, maskBlue);
 
+        // Cut off top corners
+        int w = hsv_roi.cols;
+        int h = hsv_roi.rows;
+
+        // Create a black mask of the same size as the bounding box
+        cv::Mat coneShapeMask = cv::Mat::zeros(hsv_roi.size(), CV_8UC1);
+        
+        // Define the 4 vertices of the trapezoid (inset top corners by 25%)
+        std::vector<cv::Point> pts = {
+            cv::Point(w * 0.25, 0),  
+            cv::Point(w * 0.75, 0),  
+            cv::Point(w, h),
+            cv::Point(0, h)          
+        };
+        
+        // Draw the white trapezoid on the mask
+        cv::fillPoly(coneShapeMask, std::vector<std::vector<cv::Point>>{pts}, cv::Scalar(255));
+
+        // Keep only the pixels inside the trapezoid, discarding the background corners and maintaining the same colors
+        cv::bitwise_and(maskYellow, coneShapeMask, maskYellow);
+        cv::bitwise_and(maskBlack, coneShapeMask, maskBlack);
+        cv::bitwise_and(maskOrange, coneShapeMask, maskOrange);
+        cv::bitwise_and(maskBlue, coneShapeMask, maskBlue);
+
         //Count the number of pixel of each color to classify the cone
         int countYellow = cv::countNonZero(maskYellow);
         int countBlack = cv::countNonZero(maskBlack);
         int orangeConeScore = cv::countNonZero(maskOrange);
         int blueConeScore = cv::countNonZero(maskBlue);
         int yellowConeScore = countYellow;
-        int totalPixels = hsv_roi.total();
+        int totalPixels = hsv_roi.total();  
         
         // Add black pixels to yellow score if yellow dominates or if black covers >10% of the area (saves shadowed/faded yellow cones)
         if (countYellow > orangeConeScore || countBlack > (totalPixels * 0.10)) 
@@ -97,18 +137,8 @@ std::vector<int> classifier(const cv::Mat& image, const std::vector<cv::Rect>& b
             yellowConeScore += countBlack;
         }
 
-        // Require the dominant color to cover at least 2% of the bounding box to prevent far/small cones from being discarded as UNKNOWN
-        int maxScore = std::max({yellowConeScore, blueConeScore, orangeConeScore});
-        int minColorThreshold = totalPixels * 0.02;
-
-        
         // We classify the cone
-        // If no color reaches 5% threshold then it is unknown
-        if (maxScore < minColorThreshold) 
-        {
-            labels.push_back(static_cast<int>(ConeClass::UNKNOWN));
-        }
-        else if (yellowConeScore > blueConeScore && yellowConeScore > orangeConeScore)
+        if (yellowConeScore > blueConeScore && yellowConeScore > orangeConeScore)
         {
             labels.push_back(static_cast<int>(ConeClass::YELLOW));
         }
