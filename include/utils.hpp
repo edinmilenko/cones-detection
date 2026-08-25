@@ -21,3 +21,6 @@ struct GT {
 double calculateIoU(cv::Rect a, cv::Rect b);
 void evaluatePredictions(std::vector<Pred> predictions, std::vector<GT> ground, double iouThreshold);
 
+//keeps only the highest-scoring box among those that overlap above iouThr
+std::vector<int> nonMaxSuppression(const std::vector<cv::Rect>& boxes, const std::vector<float>& scores, double iouThr);
+

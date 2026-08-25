@@ -1,18 +1,32 @@
-#include "labeler.hpp"
-#include "dataloader.hpp"
+#include "dataset.hpp"
+#include "detector.hpp"
 #include <iostream>
 #include <stdexcept>
-#include "dataset_preprocessing.hpp"
 
 int main(int argc, char* argv[]) {
-    
+
     try {
+        std::string mode = (argc > 1) ? argv[1] : "";
+
+        if(mode == "detect")
+        {
+            if(argc < 3)
+            {
+                std::cerr << "usage: main detect <image> [output.png]\n";
+                return 1;
+            }
+            std::string outPath = (argc > 3) ? argv[3] : "detection.png";
+            detectPipeline(argv[2], outPath);
+            return 0;
+        }
+
         //  LEAVE DISABLED for first run only
-        //  altrimenti rifa ogni volta, o cambiamo con un check oppure documentiamo dove mettere i tre zip prima della prima run
-        //  valutare check hardcodato?
+        //  otherwise it redoes it every time; either add a check or document where to put
+        //  the three zips before the first run
+        //  consider a hardcoded check?
         //dataLoader();
 
-        // labeler sarà da togliere dalla consegna, credo sia utile solo per fare bene i punti 2
+        // labeler should be removed before submission, probably only useful for part 2
         //labeler();
         //std::string datasetDir = argv[1];
         //csvDatasetMaker(datasetDir);

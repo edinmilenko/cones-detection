@@ -13,9 +13,8 @@ include_directories(include)
 
 add_executable(main
     src/main.cpp
-    src/labeler.cpp
-    src/dataloader.cpp
-    src/dataset_preprocessing.cpp
+    src/dataset.cpp
+    src/detector.cpp
     src/utils.cpp
     src/color_proposals.cpp
     src/patches.cpp
