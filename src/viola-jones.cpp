@@ -13,14 +13,9 @@ cv::Mat toGray(const cv::Mat& image) {
     if (image.empty()) {
         throw std::invalid_argument("Input image is empty");
     }
-
     cv::Mat gray;
     cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-
-    // Optional histogram equalization can help with uneven lighting.
-    // It is intentionally easy to remove if the cascade behaves better without it.
-    // cv::equalizeHist(gray, gray);
-
+    cv::equalizeHist(gray, gray); // MUST be used to maximise LBP's discrimination
     return gray;
 }
 
