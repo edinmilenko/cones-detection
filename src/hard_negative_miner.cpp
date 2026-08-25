@@ -13,10 +13,11 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
-// THE FOLLOWING FUNCTIONS decodeBase64, decompressZlib e decodeBitmapMask 
-// ARE EXACTLY THOSE FROM src/labeler.cpp
-// reason is to support "geometryType": "bitmap" and avoiding having cones as negatives
-// THIS WILL BE REFACTORED TO AVOID DUPLICATE CODE
+/*
+    THE FOLLOWING FUNCTIONS decodeBase64, decompressZlib e decodeBitmapMask ARE EXACTLY THOSE FROM src/labeler.cpp
+    reason is to support "geometryType": "bitmap" and avoiding having cones as negatives
+    THIS WILL BE REFACTORED TO AVOID DUPLICATE CODE
+*/
 std::vector<uchar> decodeBase64(const std::string& encoded) {
     static const std::string alphabet =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -101,6 +102,12 @@ cv::Mat decodeBitmapMask(const json& bitmap) {
 }
 // HERE ENDS THE NEED TO REFACTOR, no more comes from src/labeler.cpp
 
+/*
+    Measures accuracy of prediction wrt groud thuth. If we'd use IoM here, big false positives that happen to have
+    inside them a true small cone would register a IoM = 1.0 and that would be a true positive ignoring it.
+    Using IoU the big area of union would be close to 0+ labeling it correctly as a false positive (hard negative)
+    that classifier must learn to suppress
+*/
 double calculateIoU(const cv::Rect& a, const cv::Rect& b) {
     cv::Rect intersection = a & b;
     if (intersection.area() == 0) return 0.0;

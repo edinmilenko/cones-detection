@@ -15,14 +15,19 @@ cmake --build build -j4
 
 The expected project executables are:
 
-- `build/analyze_vj_dataset`
-- `build/prepare_vj_dataset`
-- `build/split_vj_dataset`
-- `build/main`
+* `build/analyze_vj_dataset`
+* `build/prepare_vj_dataset`
+* `build/split_vj_dataset`
+* `build/hard_negative_miner`
+* `build/evaluate_model`
+* `build/main`
 
-There is intentionally no `build/viola-jones` executable. `src/viola-jones.cpp` is compiled into `build/main` and provides the runtime wrapper around OpenCV's `cv::CascadeClassifier`.
+There is intentionally no `build/viola-jones` executable. `src/viola-jones.cpp` is compiled into the main and utility binaries, providing the runtime wrapper around OpenCV's `cv::CascadeClassifier`.
 
-## Pipeline
+## Pipeline Architecture
+
+For the complete, step-by-step guide to generating manifests, executing Hard Negative Mining, and training the cascade via Docker, strictly refer to:
+**[PIPELINE_HNM.md](https://www.google.com/search?q=PIPELINE_HNM.md)**
 
 ```text
 image + JSON annotations
@@ -30,121 +35,39 @@ image + JSON annotations
         v
 analyze_vj_dataset / prepare_vj_dataset / split_vj_dataset
         |
-        +--> train manifests --> external OpenCV 3.4 training tools --> cascade.xml
+        +--> train manifests --> Docker (OpenCV 3.4) --> cascade_base.xml
+        |                                                       |
+        |                                        hard_negative_miner (HNM)
+        |                                                       |
+        +-------------------------------------> Docker (OpenCV 3.4) --> cascade_final.xml
         |
-        +--> validation and test manifests --> evaluation only
+        +--> val manifests --> evaluate_model (Precision/Recall metrics)
                                                 |
                                                 v
-                                  build/main (OpenCV 4.13 runtime)
+                                  build/main (OpenCV 4.13 visual debugging)
 ```
 
-### 1. Analyze the source dataset
+## Batch Processing & Visual Debugging
 
-```bash
-./build/analyze_vj_dataset dataset
-```
-
-This offline check reports bounding-box statistics that support the choice of the Haar training window.
-
-### 2. Prepare reproducible manifests and negative patches
-
-```bash
-./build/prepare_vj_dataset dataset training
-```
-
-This creates the following artifacts under `training/`:
-
-- `annotations.txt`: OpenCV positive annotations in the format `image count x y width height ...`.
-- `negatives.txt`: one 24×24 negative patch path per line.
-- `negative_sources.txt`: patch-to-original-image provenance, used to prevent split leakage.
-- `dataset_images.txt`: complete list of source images, including images with no ground-truth boxes.
-- `negatives/`: generated 24×24 background patches.
-
-The source-image order and random seed are fixed so the initial negative sampling is reproducible.
-
-### 3. Split by source image
-
-```bash
-./build/split_vj_dataset training 12345 70 15 15
-```
-
-The percentages must sum to 100. Splitting happens by complete source image, never by bounding box: all annotations and negative patches from the same scene remain in exactly one of train, validation, or test.
-
-The tool writes:
-
-- `training/splits/{train,val,test}_images.txt`
-- `training/manifests/{train,val,test}_annotations.txt`
-- `training/manifests/{train,val,test}_negatives.txt`
-- `training/split_report.txt`
-
-It also validates image paths, annotation structure, 24×24 patch dimensions, negative provenance, and the absence of cross-split leakage.
-
-### 4. Train the cascade (external offline toolchain) (ill fix this)
-
-OpenCV 4.13 can load and run Haar/LBP cascade XML models, but OpenCV no longer builds the historical `opencv_createsamples` and `opencv_traincascade` applications. For this project, those tools must come from a separate, isolated OpenCV 3.4.x installation.
-
-When that isolated toolchain is available, only the train manifests are passed to it:
-
-```text
-training/manifests/train_annotations.txt
-        -> opencv_createsamples
-        -> positives.vec
-
-positives.vec + training/manifests/train_negatives.txt
-        -> opencv_traincascade
-        -> cascade.xml
-```
-
-`positives.vec` is a trainer-specific intermediate artifact, not the source dataset. Validation and test manifests must not be used to train the cascade.
-
-### 5. Run runtime inference
-
-After an external trainer has produced a `cascade.xml`, run:
-
-```bash
-./build/main <input_image> <cascade.xml> <config.json> [output_image]
-```
-
-`main` loads the XML with `cv::CascadeClassifier`, runs `detectMultiScale`, and writes a debug image with detections. The detector's runtime parameters are independent of the training process and should be tuned later using validation data.
-
-## Batch Processing
-
-The runtime detector can also process a batch of images, using the same cascade and inference configuration for every image.
-
-### List file mode
+The runtime detector processes a batch of images using the final cascade and inference configuration for every image.
 
 ```bash
 ./build/main <list_of_images.txt> <cascade.xml> <config.json> <output_dir>
 ```
 
-The list must use a `.txt` extension and contain one image path per line. Blank lines and lines beginning with `#` are ignored. Relative image paths are resolved relative to the list file, so lists can be moved together with their images.
-
-### Directory mode
-
-```bash
-./build/main <directory> <cascade.xml> <config.json> <output_dir>
-```
-
-This scans that directory (not subdirectories) for `.jpg`, `.jpeg`, and `.png` files, case-insensitively. Files are processed in a stable alphabetical order.
-
-Both batch modes create the output directory if necessary and write `<basename>_detected.jpg` for each successful image. If a batch contains duplicate basenames, later files receive a numeric suffix such as `_detected_2.jpg` so no result is overwritten. A failure to read, detect, or write one image does not stop the rest of the batch; the final summary reports the totals and the program exits nonzero when any image failed.
-
-For the fuller usage notes and examples, see [BATCH_PROCESSING.md](BATCH_PROCESSING.md).
+For the fuller usage notes and examples, see [BATCH_PROCESSING.md](https://www.google.com/search?q=BATCH_PROCESSING.md).
 
 ## Non-Maximum Suppression (NMS)
 
-The detector applies NMS to filter duplicate detections of the same cone. This is necessary because the Viola-Jones cascade may detect the same cone multiple times at different scales.
+The detector applies NMS to filter duplicate detections of the same cone, heavily tailored for Haar-like concentric anomalies.
 
-**IoU Threshold: 0.4** - Only suppresses detections with >40% overlap, allowing detection of cones that are close but not occluded.
+**IoM (Intersection over Minimum) Threshold: 0.45** - Replaced standard IoU. If a large false positive completely encapsulates a smaller true positive, IoM evaluates to 1.0, ensuring the immediate suppression of the lower-confidence (smaller) bounding box.
 
 **Adaptive Center Distance Threshold** - The suppression distance scales with cone size:
-- Formula: `0.75 × max(width, height)`
-- Small cones (~20px): threshold ≈ 15px
-- Large cones (~400px): threshold ≈ 300px
 
-**Rationale:** Dataset (a subset of the whole one) analysis shows median cone size is 19×27px, with 52% of cones <20px wide and 56% <30px tall. A fixed threshold would either miss small cones or suppress nearby large cones. The adaptive threshold ensures fair treatment across all cone sizes.
-
-**Note:** These values are starting points. Tune based on validation results.
+* Formula: `0.75 × max(width, height)`
+* Small cones (~20px): threshold ≈ 15px
+* Large cones (~400px): threshold ≈ 300px
 
 ## Detection Parameters
 
@@ -152,8 +75,8 @@ The detector parameters are configured in `configs/hyperparams.json`:
 
 ```json
 {
-    "scaleFactor": 1.1,
-    "minNeighbors": 3,
+    "scaleFactor": 1.15,
+    "minNeighbors": 25,
     "minSize": [16, 24],
     "maxSize": [200, 300]
 }
@@ -161,19 +84,17 @@ The detector parameters are configured in `configs/hyperparams.json`:
 
 **Parameter Rationale:**
 
-- **minSize: [16, 24]** - Reduced from [24, 36] based on dataset analysis showing 52% of cones are <20px wide and 56% are <30px tall. This ensures detection of smaller cones without missing them.
-
-- **scaleFactor: 1.1** - Provides good scale coverage for cones ranging from 16px to 200px.
-
-- **minNeighbors: 3** - Conservative setting for higher recall. Test 4-6 for higher precision.
-
-**Note:** These values are starting points. Tune based on validation results.
+* **minSize: [16, 24]** - Based on dataset analysis showing 52% of cones are <20px wide and 56% are <30px tall. Ensures detection of smaller cones without missing them.
+* **scaleFactor: 1.15** - Provides optimal scale coverage while limiting the computational overhead of the image pyramid. Increasing to 1.2+ destroys recall on medium-distance cones.
+* **minNeighbors: 25** - Highly restrictive setting required to suppress structured environmental noise (trees, asphalt lines, vehicle chassis) generated by HAAR features' limitations. Lower values exponentially increase False Positives Per Image (FPPI).
 
 ## Source structure
 
-- `src/analyze_vj_dataset.cpp`: offline bounding-box analysis.
-- `src/prepare_vj_dataset.cpp`: offline manifest and negative-patch generation.
-- `src/split_vj_dataset.cpp`: deterministic image-level split and integrity validation.
-- `src/viola-jones.cpp`: runtime OpenCV cascade wrapper and drawing helper.
-- `src/main.cpp`: runtime command-line entry point.
-- `src/labeler.cpp` and `src/dataloader.cpp`: existing dataset/annotation support utilities.
+* `src/analyze_vj_dataset.cpp`: offline bounding-box analysis.
+* `src/prepare_vj_dataset.cpp`: offline manifest and negative-patch generation.
+* `src/split_vj_dataset.cpp`: deterministic image-level split and integrity validation.
+* `src/hard_negative_miner.cpp`: extracts high-confidence False Positives (IoU < 0.1) from the base cascade.
+* `src/evaluate_model.cpp`: computes Precision, Recall, and FPPI metrics against JSON ground truth.
+* `src/viola-jones.cpp`: runtime OpenCV cascade wrapper, NMS logic, and drawing helper.
+* `src/main.cpp`: runtime command-line entry point.
+* `src/labeler.cpp` & `src/dataloader.cpp`: existing dataset/annotation support utilities.

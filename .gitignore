@@ -11,3 +11,5 @@ segmentation_test
 .DS_Store
 val_images.txt
 validation_results/
+hnm_output/
+training/cascades/

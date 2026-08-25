@@ -1,12 +1,12 @@
 # Cones Detection: Viola-Jones & Hard Negative Mining Pipeline
 
-This guide defines the complete pipeline for the training, optimization via Hard Negative Mining (HNM), and validation of the Viola-Jones cone detector.
+This guide defines the complete pipeline for the training, optimization via Hard Negative Mining (HNM), and validation of the Viola-Jones cone detector using Haar features.
 
 The legacy training tools (`opencv_createsamples`, `opencv_traincascade`) are isolated in a Docker environment based on OpenCV 3.4 to avoid conflicts with the OpenCV 4 runtime dependency.
 
 ## 1. Host Project Compilation
 
-The system requires native compilation of the utility binaries, updated to include the Hard Negatives extractor.
+The system requires native compilation of the utility binaries, updated to include the Hard Negatives extractor and the analytical evaluator.
 
 ```bash
 cmake -S . -B build
@@ -30,7 +30,7 @@ The native executables generate the manifests and random background samples.
 
 ## 3. Training Environment Isolation (Docker)
 
-Haar/LBP training requires OpenCV 3.4. The compilation disables test modules to prevent Out-Of-Memory crashes.
+Haar training requires OpenCV 3.4. The compilation disables test modules to prevent Out-Of-Memory crashes.
 
 1. Creation of the `Dockerfile.opencv3`:
 
@@ -64,21 +64,21 @@ ln -s ../../training training/manifests/training
 
 ### 4.1 Vector Generation
 
-*Replace `<NUM_STANDING_TRAIN>` with the value extracted from `training/split_report.txt`.*
+Generates the initial `.vec` file using the positive samples designated for training.
 
 ```bash
 docker run --rm -v $(pwd):/workspace opencv3-trainer \
     opencv_createsamples \
     -info training/manifests/train_annotations_standing.txt \
     -vec training/positives_standing.vec \
-    -num <NUM_STANDING_TRAIN> \
+    -num 13760 \
     -w 24 -h 36
 
 ```
 
 ### 4.2 Base Cascade Training
 
-Memory parameters (`-precalcValBufSize`, `-precalcIdxBufSize`) reduce bottlenecks. `numPos` must be conservative (~85% of the total in `.vec`) to prevent stalls.
+Memory parameters (`-precalcValBufSize`, `-precalcIdxBufSize`) reduce bottlenecks by caching feature values in RAM. `numPos` is capped at ~83% to prevent infinite loops.
 
 ```bash
 mkdir -p training/cascade_base
@@ -88,9 +88,10 @@ docker run --rm -v $(pwd):/workspace opencv3-trainer \
     -data training/cascade_base \
     -vec training/positives_standing.vec \
     -bg training/manifests/train_negatives.txt \
-    -numPos <NUM_POS_CALCULATED> -numNeg <NUM_NEG_CALCULATED> \
+    -numPos 11500 -numNeg 4000 \
     -numStages 10 \
     -w 24 -h 36 \
+    -featureType HAAR \
     -minHitRate 0.995 \
     -maxFalseAlarmRate 0.5 \
     -precalcValBufSize 2048 \
@@ -100,46 +101,74 @@ docker run --rm -v $(pwd):/workspace opencv3-trainer \
 
 ## 5. Hard Negative Mining (HNM) and JSON Inference
 
-The base cascade contains numerous false positives. Running `hard_negative_miner` on the entire dataset generates metrics for the segmentation team and extracts structured noise patches (36x36 px) misclassified with high confidence.
+The base cascade produces numerous False Positives. The `hard_negative_miner` evaluates the entire dataset, exports JSON predictions, and crops 36x36 px patches that triggered high-confidence false alarms.
 
 ```bash
 # Native script execution (JSON output + Hard Negative patches)
 ./build/hard_negative_miner dataset training/cascade_base/cascade.xml configs/hyperparams.json hnm_output/
+
 ```
 
-*Output produced in `hnm_output/`:*
+## 6. Subsampling and Final Re-Training
 
-* `json_predictions/`: `.json` files usable downstream for segmentation.
-* `hnm_patches/`: PNG images of the noise (e.g., vehicle portions, trees).
-* `train_negatives_hnm.txt`: Relative manifest of the new samples.
-
-## 6. Data Fusion and Final Re-Training
-
-The HNM patches must be mixed with the random background to avoid the phenomenon of *catastrophic forgetting*.
+To avoid memory saturation and *catastrophic forgetting*, the pipeline subsamples the generated HNM patches and mixes them with the random background negatives (cap: 15,000 total negatives, 15,000 total positives).
 
 ```bash
+# MacOS/BSD POSIX subsampling using sort -R
+sort -R hnm_output/train_negatives_hnm.txt | head -n 7500 > hnm_output/sampled_hnm.txt
+sort -R training/manifests/train_negatives.txt | head -n 7500 > training/manifests/sampled_random.txt
+
 # Merging random background manifest + hard negatives
-cat training/manifests/train_negatives.txt hnm_output/train_negatives_hnm.txt > training/manifests/combined_negatives.txt
+cat training/manifests/sampled_random.txt hnm_output/sampled_hnm.txt > training/manifests/combined_negatives.txt
 ```
 
-*Replace `<NEW_NUM_NEG>` with 50% of the total lines counted in `combined_negatives.txt`.*
+Generate the new subsampled positive vector:
+
+```bash
+docker run --rm -v $(pwd):/workspace opencv3-trainer \
+    opencv_createsamples \
+    -info training/manifests/train_annotations_standing.txt \
+    -vec training/positives_final.vec \
+    -num 15000 \
+    -w 24 -h 36
+```
+
+Train the final Haar cascade on the balanced dataset:
 
 ```bash
 mkdir -p training/cascade_final
 
-docker run --rm -v $(pwd):/workspace opencv3-trainer     opencv_traincascade     -data training/cascade_final     -vec training/positives_standing.vec     -bg training/manifests/combined_negatives.txt     -numPos <NUM_POS_CALCULATED> -numNeg <NEW_NUM_NEG>     -numStages 10     -w 24 -h 36     -minHitRate 0.995     -maxFalseAlarmRate 0.5     -precalcValBufSize 2048     -precalcIdxBufSize 2048
+docker run --rm -v $(pwd):/workspace opencv3-trainer \
+    opencv_traincascade \
+    -data training/cascade_final \
+    -vec training/positives_final.vec \
+    -bg training/manifests/combined_negatives.txt \
+    -numPos 12500 -numNeg 7500 \
+    -numStages 10 \
+    -w 24 -h 36 \
+    -featureType HAAR \
+    -minHitRate 0.995 \
+    -maxFalseAlarmRate 0.5 \
+    -precalcValBufSize 2048 \
+    -precalcIdxBufSize 2048
 ```
 
-## 7. Validation and Visual Inspection
+## 7. Analytical Validation and Visual Inspection
 
-The final visual test (bounding boxes rendering) must be performed exclusively on the validation split, using the C++ detector that implements Non-Maximum Suppression based on Intersection-over-Minimum (IoM).
+Validation is strictly performed on the `val` split. It requires an analytical evaluation of Precision, Recall, and FPPI using the custom IoU thresholding script, followed by the visual rendering of bounding boxes using Intersection-over-Minimum (IoM) NMS.
 
 ```bash
 # Temporary files cleanup
 rm training/manifests/dataset
 rm training/manifests/training
 
-# Batch execution
-mkdir -p validation_results
+# Prepare validation manifest
 cp training/splits/val_images.txt ./val_images.txt
+
+# 1. Analytical Evaluation (Precision, Recall, FPPI)
+./build/evaluate_model val_images.txt training/cascade_final/cascade.xml configs/hyperparams.json
+
+# 2. Batch Execution & Visual Debug
+mkdir -p validation_results
 ./build/main val_images.txt training/cascade_final/cascade.xml configs/hyperparams.json validation_results/
+```
