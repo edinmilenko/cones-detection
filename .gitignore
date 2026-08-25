@@ -9,3 +9,7 @@ fsoco_segmentation_train-001/
 labeled/
 segmentation_test
 .DS_Store
+
+# session/tuning working notes, not needed to build or use the pipeline
+PROGRESS_FASE4.md
+tuning_log.md
