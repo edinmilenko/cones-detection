@@ -48,8 +48,6 @@ cv::Mat segmentCone(const cv::Mat& roi, int predictedClass)
     cv::Mat maskWhite;
     cv::inRange(hsv_roi, cv::Scalar(0, 0, 150), cv::Scalar(179, 50, 255), maskWhite);
     
-    // Unisci le strisce bianche al Background sicuro. 
-    // Così il Watershed etichetterà il bianco come '1' (sfondo) e non come cono.
     sure_backg = sure_backg | maskWhite;
 
     // Use Distance Transform to find the absolute center of the cone
@@ -76,14 +74,8 @@ cv::Mat segmentCone(const cv::Mat& roi, int predictedClass)
     markers.setTo(0, unknown_region);
     
     cv::watershed(roi, markers);
-
-    // L'intuizione vincente: accettiamo QUALSIASI parte del cono trovata (labels 2, 3, 4...).
-    // L'operatore '>' crea una maschera a 8-bit con 255 dove la condizione è vera.
     segm_roi = (markers > 1);
     
-    // Opzionale: Watershed disegna i confini tra i pezzi (es. tra punta e base) con il valore -1.
-    // Per avere un cono perfettamente compatto senza linee nere in mezzo, facciamo un piccolo
-    // MORPH_CLOSE finale solo sulla maschera estratta.
     cv::morphologyEx(segm_roi, segm_roi, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
 
     return segm_roi;
