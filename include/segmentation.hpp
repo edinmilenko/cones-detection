@@ -2,9 +2,10 @@
 #define SEGMENTATION_HPP
 
 #include <opencv2/opencv.hpp>
-#include <vector>
+#include "classifier.hpp" 
 
+cv::Mat segmentCone(const cv::Mat& roi, int predictedClass);
 
+double calculateIoU(const cv::Mat& predictedMask, const cv::Mat& groundTruthMask);
 
-
-#endif // SEGMENTATION_HPP
+#endif

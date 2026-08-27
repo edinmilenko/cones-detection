@@ -17,6 +17,7 @@ add_executable(main
     src/labeler.cpp
     src/dataloader.cpp 
     src/classifier.cpp
+    src/segmentation.cpp
 )
 
 target_link_libraries(main ${OpenCV_LIBS} nlohmann_json::nlohmann_json ZLIB::ZLIB)

@@ -3,7 +3,8 @@ dataset/
 srcOLD/
 build/
 fsoco_bounding_boxes_train/
-fsoco_segmentation_train-001/
+fsoco_segmentation_train/
 labeled/
 segmentation_test
+test_set/
 .DS_Store

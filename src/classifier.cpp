@@ -8,7 +8,7 @@ ConeClass classifyOrangeCone(const cv::Mat& hsv_roi)
     cv::Mat whiteMask;
 
     cv::inRange(hsv_roi, lowerBoundWhite, upperBoundWhite, whiteMask);
-    // Applying closing for noise reduction and have more compact regions
+    // Applying opening for noise reduction and have more compact regions
     cv::morphologyEx(whiteMask, whiteMask, cv::MORPH_OPEN, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 1)));
     
     // FindContours will find one or two blobs, whether it is a small or big cone. We store the contours in vector "contours" as point coordinates
@@ -83,7 +83,7 @@ std::vector<int> classifier(const cv::Mat& image, const std::vector<cv::Rect>& b
         cv::Scalar upperBoundBlack(179, 50, 50);
         cv::Scalar lowerBoundOrange(0, 60, 50);
         cv::Scalar upperBoundOrange(15, 255, 255);
-        cv::Scalar lowerBoundBlue(90, 50, 40);
+        cv::Scalar lowerBoundBlue(95, 85, 40);
         cv::Scalar upperBoundBlue(130, 255, 255);
         
         // Create the binary mask filtering keeping only pixel if they are eqaul to the color we are analyzing
