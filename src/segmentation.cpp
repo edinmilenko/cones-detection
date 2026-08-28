@@ -1,84 +1,127 @@
 #include "segmentation.hpp"
 
+// K-means++ -> Largest Component -> Convex Hull
 cv::Mat segmentCone(const cv::Mat& roi, int predictedClass)
 {
+    if (roi.empty()) return cv::Mat::zeros(1, 1, CV_8UC1);
+
     cv::Mat hsv_roi;
     cv::cvtColor(roi, hsv_roi, cv::COLOR_BGR2HSV);
-    
-    // Enhance contrast in V channel without washing out bright colors
-    std::vector<cv::Mat> hsv_channels;
-    cv::split(hsv_roi, hsv_channels); 
-    //cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
-    //clahe->apply(hsv_channels[2], hsv_channels[2]); 
-    cv::merge(hsv_channels, hsv_roi);
 
     cv::Mat segm_roi = cv::Mat::zeros(hsv_roi.size(), CV_8UC1);
 
-    // Initial color segmentation
+    // 1. Color thresholds (hints for K-Means)
     switch(predictedClass)
     {
-        case 1: { // Yellow (includes black to capture base/shadows)
-            cv::Scalar lowerBoundYellow(15, 80, 50);
-            cv::Scalar upperBoundYellow(40, 255, 255);
-            //cv::Scalar lowerBoundBlack(0, 0, 0), upperBoundBlack(179, 50, 50);
-            //cv::Mat maskYellow, maskBlack;
-            cv::inRange(hsv_roi, lowerBoundYellow, upperBoundYellow, segm_roi);
-            //cv::inRange(hsv_roi, lowerBoundBlack, upperBoundBlack, maskBlack);
-            //segm_roi = maskYellow | maskBlack;
+        case 1: // Yellow
+            cv::inRange(hsv_roi, cv::Scalar(15, 80, 50), cv::Scalar(40, 255, 255), segm_roi);
             break;
-        }
-        case 2: { // Blue
-            cv::Scalar lowerBoundBlue(95, 85, 40), upperBoundBlue(130, 255, 255);
-            cv::inRange(hsv_roi, lowerBoundBlue, upperBoundBlue, segm_roi);
+        case 2: // Blue
+            cv::inRange(hsv_roi, cv::Scalar(95, 85, 40), cv::Scalar(130, 255, 255), segm_roi);
             break;
-        }
         case 3:
-        case 4: { // Orange (Small & Big)
-            cv::Scalar lowerBoundOrange(0, 60, 50), upperBoundOrange(15, 255, 255);
-            cv::inRange(hsv_roi, lowerBoundOrange, upperBoundOrange, segm_roi);
+        case 4: // Orange
+            cv::inRange(hsv_roi, cv::Scalar(0, 60, 50), cv::Scalar(15, 255, 255), segm_roi);
             break;
+    }
+
+    cv::morphologyEx(segm_roi, segm_roi, cv::MORPH_OPEN, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
+    
+    cv::Mat maskWhite;
+    cv::inRange(hsv_roi, cv::Scalar(0, 0, 150), cv::Scalar(179, 50, 255), maskWhite);
+
+    if (cv::countNonZero(segm_roi) == 0) {
+        return cv::Mat::zeros(roi.size(), CV_8UC1);
+    }
+
+    // 2. Prepare 1D data for K-Means
+    cv::Mat samples = hsv_roi.reshape(1, hsv_roi.total());
+    samples.convertTo(samples, CV_32F);
+
+    // 3. K-Means clustering (K=3: Background, Cone Color, White Stripes)
+    int K = 3;
+    cv::Mat labels, centers;
+    cv::kmeans(samples, K, labels, 
+               cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 10, 1.0), 
+               3, cv::KMEANS_PP_CENTERS, centers);
+
+    labels = labels.reshape(1, roi.rows);
+
+    // 4. Vote for cone and stripe clusters
+    int colorVotes[3] = {0, 0, 0};
+    int whiteVotes[3] = {0, 0, 0};
+
+    for (int y = 0; y < roi.rows; y++) {
+        for (int x = 0; x < roi.cols; x++) {
+            int cluster_idx = labels.at<int>(y, x);
+            if (segm_roi.at<uchar>(y, x) > 0) colorVotes[cluster_idx]++;
+            if (maskWhite.at<uchar>(y, x) > 0) whiteVotes[cluster_idx]++;
         }
     }
 
-    // Clean noise, then dilate to enclose the whole cone and its borders
-    cv::morphologyEx(segm_roi, segm_roi, cv::MORPH_OPEN, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
-    cv::Mat sure_backg;
-    cv::dilate(segm_roi, sure_backg, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)), cv::Point(-1, -1), 2); 
+    int bestColorCluster = 0, maxColorVotes = -1;
+    int bestWhiteCluster = 0, maxWhiteVotes = -1;
 
-    cv::Mat maskWhite;
-    cv::inRange(hsv_roi, cv::Scalar(0, 0, 150), cv::Scalar(179, 50, 255), maskWhite);
+    for (int i = 0; i < K; i++) {
+        if (colorVotes[i] > maxColorVotes) {
+            maxColorVotes = colorVotes[i];
+            bestColorCluster = i;
+        }
+        if (whiteVotes[i] > maxWhiteVotes) {
+            maxWhiteVotes = whiteVotes[i];
+            bestWhiteCluster = i;
+        }
+    }
+
+    // 5. Build initial mask
+    cv::Mat final_mask = cv::Mat::zeros(roi.size(), CV_8UC1);
+    for (int y = 0; y < roi.rows; y++) {
+        for (int x = 0; x < roi.cols; x++) {
+            int cluster_idx = labels.at<int>(y, x);
+            if (cluster_idx == bestColorCluster || (cluster_idx == bestWhiteCluster && maxWhiteVotes > 15)) {
+                final_mask.at<uchar>(y, x) = 255;
+            }
+        }
+    }
+
+    // 6. Close small gaps (vertical kernel)
+    cv::morphologyEx(final_mask, final_mask, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 5)));
+
+    // 7. Keep largest connected component (NMS equivalent)
+    cv::Mat labeledImage, stats, centroids;
+    int nLabels = cv::connectedComponentsWithStats(final_mask, labeledImage, stats, centroids, 8, CV_32S);
     
-    sure_backg = sure_backg | maskWhite;
+    if (nLabels > 1) { 
+        int maxArea = 0;
+        int maxLabel = 1;
+        
+        for (int i = 1; i < nLabels; i++) { // Ignore background (label 0)
+            int area = stats.at<int>(i, cv::CC_STAT_AREA);
+            if (area > maxArea) {
+                maxArea = area;
+                maxLabel = i;
+            }
+        }
+        
+        // Extract largest blob
+        final_mask = (labeledImage == maxLabel);
+        final_mask.convertTo(final_mask, CV_8UC1, 255.0);
 
-    // Use Distance Transform to find the absolute center of the cone
-    cv::Mat sure_foreg; 
-    cv::distanceTransform(segm_roi, sure_foreg, cv::DIST_L2, 5); 
+        // 8. Apply Convex Hull for solid shape
+        std::vector<std::vector<cv::Point>> contours;
+        cv::findContours(final_mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
-    double minVal, maxVal;
-    cv::minMaxLoc(sure_foreg, &minVal, &maxVal); 
-    
-    // Safety check: if no color is detected at all, return empty mask to prevent crash
-    if (maxVal == 0) return segm_roi;
+        if (!contours.empty()) {
+            std::vector<cv::Point> hull;
+            cv::convexHull(contours[0], hull);
 
-    // Threshold at 20% of max distance to isolate the core, then convert to 8-bit
-    cv::threshold(sure_foreg, sure_foreg, 0.2 * maxVal, 255, cv::THRESH_BINARY);
-    sure_foreg.convertTo(sure_foreg, CV_8U);
+            // Redraw convex shape
+            final_mask = cv::Mat::zeros(final_mask.size(), CV_8UC1);
+            cv::fillConvexPoly(final_mask, hull, cv::Scalar(255));
+        }
+    }
 
-    // The uncertain border area is the difference between background and core
-    cv::Mat unknown_region = sure_backg - sure_foreg;
-
-    // Setup markers: 1 for background, 2 for cone core, 0 for unknown borders
-    cv::Mat markers;
-    cv::connectedComponents(sure_foreg, markers, 8, CV_32S);
-    markers += 1; 
-    markers.setTo(0, unknown_region);
-    
-    cv::watershed(roi, markers);
-    segm_roi = (markers > 1);
-    
-    cv::morphologyEx(segm_roi, segm_roi, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
-
-    return segm_roi;
+    return final_mask;
 }
 
 
