@@ -1,9 +1,9 @@
 // Variante ad-hoc di eval_real.cpp: invece di sweepare stage2_thr a NMS fissa (0.4), fissa
-// stage2_thr al punto di miglior F1 gia' trovato (0.01) e sweepa la soglia IoU dell'NMS, per
-// misurare l'effetto di un NMS piu' aggressivo sui cluster densi (osservato in ka_00061:
-// piu' box sovrapposti sullo stesso cono con NMS 0.4).
+// stage2_thr at the best-F1 point already found (0.01) and sweeps the NMS IoU threshold, to measure
+// what a more aggressive NMS does on dense clusters (seen in ka_00061: several overlapping boxes on
+// the same cone with NMS 0.4).
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I../tools -I/usr/include/opencv4 \
 //     ../tools/eval_real_nms_sweep.cpp ../src/hog.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_objdetect -lopencv_ml \
@@ -62,7 +62,7 @@ int main(int argc, char** argv){
         const auto& gtBoxes = it->second;
 
         cv::Mat bgr = cv::imread(datasetDir + "/" + imgName, cv::IMREAD_COLOR);
-        if(bgr.empty()){ std::cerr << "immagine non trovata: " << imgName << "\n"; continue; }
+        if(bgr.empty()){ std::cerr << "image not found: " << imgName << "\n"; continue; }
         cv::Mat gray; cv::cvtColor(bgr, gray, cv::COLOR_BGR2GRAY);
 
         std::vector<cv::Rect> cands = colorProposals(bgr);
@@ -99,10 +99,10 @@ int main(int argc, char** argv){
         data.push_back(std::move(d));
     }
 
-    std::cout << "=== TEST SET REALE (" << data.size() << " immagini, " << nGt << " GT box) ===\n";
-    std::cout << "candidati/immagine: " << (double(totalCands)/data.size()) << "\n";
-    std::cout << "coverage (IoU>=0.3, nessun classificatore): " << (100.0*nCovered/nGt) << "%\n";
-    std::cout << "sopravvissuti allo stadio 1/immagine: " << (double(survivedStage1)/data.size()) << "\n\n";
+    std::cout << "=== REAL TEST SET (" << data.size() << " images, " << nGt << " GT box) ===\n";
+    std::cout << "candidates/image: " << (double(totalCands)/data.size()) << "\n";
+    std::cout << "coverage (IoU>=0.3, no classifier): " << (100.0*nCovered/nGt) << "%\n";
+    std::cout << "survivors of stage 1/image: " << (double(survivedStage1)/data.size()) << "\n\n";
 
     const float thr2 = thr2Arg;
     std::vector<ImgData> filtered;
@@ -114,7 +114,7 @@ int main(int argc, char** argv){
         filtered.push_back(std::move(fd));
     }
 
-    std::cout << "sweep soglia IoU NMS a stage2_thr=" << thr2 << " fisso:\n";
+    std::cout << "sweep threshold IoU NMS a stage2_thr=" << thr2 << " fixed:\n";
     for(double iouThr : {0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}){
         long long tp = 0, fp = 0, fn = 0;
         for(const auto& d : filtered){

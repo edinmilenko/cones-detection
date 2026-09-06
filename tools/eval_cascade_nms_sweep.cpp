@@ -1,9 +1,9 @@
-// Variante ad-hoc di eval_cascade.cpp: come eval_real_nms_sweep.cpp ma sul test set sintetico,
-// per verificare che il guadagno di un NMS piu' aggressivo non sia un artefatto delle sole 24
-// immagini del test set reale. stage2_thr fisso a 0.01 (miglior F1 gia' trovato), sweep sulla
-// soglia IoU dell'NMS.
+// Ad-hoc variant of eval_cascade.cpp: like eval_real_nms_sweep.cpp but on the synthetic test set,
+// to check that the gain from a more aggressive NMS is not an artefact of the mere 24
+// images of the real test set. stage2_thr fixed at 0.01 (the best F1 already found), sweeping the
+// NMS IoU threshold.
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I../tools -I/usr/include/opencv4 \
 //     ../tools/eval_cascade_nms_sweep.cpp ../src/hog.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_objdetect -lopencv_ml \
@@ -84,16 +84,16 @@ int main(int argc, char** argv){
 
             float s1 = shift;
             for(size_t j = 0; j < descriptor.size(); j++) s1 += W.at<float>(0, (int)j) * descriptor[j];
-            if(s1 <= stage1Thr) continue; // scartato dallo stadio 1
+            if(s1 <= stage1Thr) continue; // dropped by stage 1
             survivedStage1++;
 
             cv::Mat featRow(1, (int)descriptor.size(), CV_32F, descriptor.data());
             cv::Mat raw;
             stage2->predict(featRow, raw, cv::ml::StatModel::RAW_OUTPUT);
-            // cv::ml::SVM: RAW_OUTPUT e' la distanza con segno dall'iperpiano; per costruzione
-            // (label positiva=1 usata in training) valori PIU' NEGATIVI = piu' verso la classe
-            // positiva. Si inverte il segno per avere "punteggio piu' alto = piu' cono", come
-            // nello stadio 1 e nel resto della codebase.
+            // cv::ml::SVM: RAW_OUTPUT is the signed distance from the hyperplane; by construction
+            // (positive label=1 used in training) MORE NEGATIVE values mean more towards the
+            // positive class. The sign is flipped so that "higher score = more cone", as in stage 1
+            // and the rest of the codebase.
             float s2 = -raw.at<float>(0, 0);
 
             d.boxes.push_back(c);
@@ -102,9 +102,9 @@ int main(int argc, char** argv){
         data.push_back(std::move(d));
     }
 
-    std::cout << "immagini valutate: " << data.size() << " (stage1_thr=" << stage1Thr << ")\n";
-    std::cout << "candidati/immagine pre-stadio1: " << (double(totalCands)/data.size())
-               << "  sopravvissuti/immagine: " << (double(survivedStage1)/data.size()) << "\n\n";
+    std::cout << "images evaluated: " << data.size() << " (stage1_thr=" << stage1Thr << ")\n";
+    std::cout << "candidates/image pre-stage1: " << (double(totalCands)/data.size())
+               << "  survivors/image: " << (double(survivedStage1)/data.size()) << "\n\n";
 
     const float thr2 = 0.01f;
     std::vector<ImgData> filtered;
@@ -116,7 +116,7 @@ int main(int argc, char** argv){
         filtered.push_back(std::move(fd));
     }
 
-    std::cout << "sweep soglia IoU NMS a stage2_thr=" << thr2 << " fisso:\n";
+    std::cout << "sweep threshold IoU NMS a stage2_thr=" << thr2 << " fixed:\n";
     for(double iouThr : {0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}){
         long long tp = 0, fp = 0, fn = 0;
         for(const auto& d : filtered){

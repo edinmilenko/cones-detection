@@ -1,16 +1,31 @@
 #pragma once
+#include <opencv2/core.hpp>
 #include <string>
+#include <vector>
 
-// unisce fsoco_bounding_boxes_train e fsoco_segmentation_train in dataset/, rinumerando le
-// coppie immagine/annotazione condivise (1.jpg, 1.json, 2.jpg, 2.json, ...).
+enum class AnnotationGeometry { Rectangle, Bitmap };
+
+// either a rectangle, or a bitmap mask placed at origin
+struct Annotation {
+    AnnotationGeometry geometry = AnnotationGeometry::Rectangle;
+    cv::Point topLeft;
+    cv::Point bottomRight;
+    cv::Mat mask;
+    cv::Point origin;
+    std::string label;
+};
+
+// reads one Supervisely annotation file. Needed outside dataset.cpp to score the segmentation,
+// which is the only place the bitmap masks are used.
+std::vector<Annotation> readAnnotations(const std::string& annotationPath);
+
+// merges fsoco_bounding_boxes_train and fsoco_segmentation_train into dataset/, renumbering the
+// image/annotation pairs they share (1.jpg, 1.json, 2.jpg, 2.json, ...).
 void dataLoader();
 
-// estrae le bounding box (annotazioni "rectangle") da dataset/ in dataset.csv (img,x1,y1,x2,y2).
+// pulls the bounding boxes ("rectangle" annotations) out of dataset/ into dataset.csv
+// (img,x1,y1,x2,y2).
 void csvDatasetMaker(std::string datasetDir);
 
-// split train/test deterministico (seed fisso) su un sottoinsieme di devSize immagini.
-void makeSplit(std::string csvPath, std::string outDir, int devSize = 2000, double trainFrac = 0.7, int seed = 42);
-
-// disegna le annotazioni (rettangoli o maschere bitmap) di dataset/ e salva in labeled/, per
-// ispezione visiva.
+// draws the annotations (rectangles or bitmap masks) of dataset/ into labeled/, to look at them.
 void labeler();

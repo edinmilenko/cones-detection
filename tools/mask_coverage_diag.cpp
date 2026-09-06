@@ -1,11 +1,11 @@
-// File a parte, non collegato a CMakeLists: duplica (senza toccare color_proposals.cpp) la
-// pipeline whiteBalance+colorMask+morphCleaning per misurare, dentro ogni GT box non coperta da
-// un candidato (vedi coverage_diag.cpp), la frazione di pixel che passano il filtro colore PRIMA
-// e DOPO la pulizia morfologica. Se la frazione pre-morfologia e' gia' bassa, il problema e' la
-// soglia HSV; se e' alta ma crolla dopo l'opening/closing, il problema e' la morfologia che
+// Standalone file, not wired into CMakeLists: duplicates (without touching color_proposals.cpp)
+// the whiteBalance+colorMask+morphCleaning pipeline to measure, inside every GT box no candidate
+// covers (see coverage_diag.cpp), the fraction of pixels passing the color filter BEFORE and AFTER
+// the morphological cleaning. If the pre-morphology fraction is already low the problem is the HSV
+// threshold; if it is high but collapses after the opening/closing the problem is the morphology
 // cancella i blob piccoli.
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I/usr/include/opencv4 \
 //     ../tools/mask_coverage_diag.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc \
@@ -101,7 +101,7 @@ int main(int argc, char** argv){
         cv::Mat maskPre = colorMask(corrected);
         cv::Mat maskPost = morphCleaning(maskPre);
 
-        // ricalcola i candidati con la stessa logica di findCandidateBoxes per sapere quali GT restano scoperte
+        // recomputes the candidates with the same logic as findCandidateBoxes, to know which GT stay uncovered
         std::vector<std::vector<cv::Point>> contours;
         cv::findContours(maskPost, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
         double maxArea = 0.01 * maskPost.rows * maskPost.cols;
@@ -140,18 +140,18 @@ int main(int argc, char** argv){
                    << " mean=" << (sum/v.size()) << "\n";
     };
 
-    std::cout << "frazione di pixel della GT box che passano il filtro colore (0..1)\n\n";
-    stat("PRE-morfologia,  coperte", preCovered);
-    stat("PRE-morfologia,  MANCATE", preMissed);
-    stat("POST-morfologia, coperte", postCovered);
-    stat("POST-morfologia, MANCATE", postMissed);
+    std::cout << "fraction of GT box pixels passing the color filter (0..1)\n\n";
+    stat("PRE-morphology,  covered", preCovered);
+    stat("PRE-morphology,  MANCATE", preMissed);
+    stat("POST-morphology, covered", postCovered);
+    stat("POST-morphology, MANCATE", postMissed);
 
     int zeroPreMissed = 0, zeroPostMissed = 0;
     for(double v : preMissed) if(v < 1e-9) zeroPreMissed++;
     for(double v : postMissed) if(v < 1e-9) zeroPostMissed++;
-    std::cout << "\nmancate con fracPRE==0 (nessun pixel di colore utile nella box): " << zeroPreMissed
+    std::cout << "\nmissed with fracPRE==0 (no usable color pixel in the box): " << zeroPreMissed
                << "/" << preMissed.size() << " (" << (100.0*zeroPreMissed/preMissed.size()) << "%)\n";
-    std::cout << "mancate con fracPRE>0 ma fracPOST==0 (uccise dalla morfologia): "
+    std::cout << "missed with fracPRE>0 but fracPOST==0 (killed by the morphology): "
                << (zeroPostMissed - zeroPreMissed) << "/" << preMissed.size() << " ("
                << (100.0*(zeroPostMissed - zeroPreMissed)/preMissed.size()) << "%)\n";
 

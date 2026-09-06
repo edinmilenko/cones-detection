@@ -1,10 +1,10 @@
-// File a parte, non collegato a CMakeLists: come visualize_detections.cpp, ma per il vero test
-// set esterno (test_set/segmentation_test) e con la cascata a due stadi attuale (stadio1
-// lineare -> stadio2 RBF) invece del singolo classificatore lineare aspect-normalizzato usato
-// dalla versione originale del tool. Disegna GT (verde) e detection accettate dopo NMS (rosso)
-// su tutte le immagini del test set reale.
+// Standalone file, not wired into CMakeLists: like visualize_detections.cpp, but for the real test
+// external set (test_set/segmentation_test) and with the current two-stage cascade (linear stage 1
+// -> RBF stage 2) instead of the single aspect-normalized linear classifier the original version of
+// the tool used. Draws GT (green) and the detections kept after NMS (red) over every image of the
+// real test set.
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I../tools -I/usr/include/opencv4 \
 //     ../tools/visualize_real.cpp ../src/hog.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_objdetect -lopencv_ml \
@@ -58,7 +58,7 @@ int main(int argc, char** argv){
 
     for(const auto& imgName : imgs){
         cv::Mat bgr = cv::imread(datasetDir + "/" + imgName, cv::IMREAD_COLOR);
-        if(bgr.empty()){ std::cerr << "skip (non leggibile): " << imgName << "\n"; continue; }
+        if(bgr.empty()){ std::cerr << "skip (unreadable): " << imgName << "\n"; continue; }
         cv::Mat gray; cv::cvtColor(bgr, gray, cv::COLOR_BGR2GRAY);
 
         std::vector<cv::Rect> cands = colorProposals(bgr);
@@ -96,8 +96,8 @@ int main(int argc, char** argv){
         std::string stem = imgName.substr(0, imgName.find_last_of('.'));
         std::string outPath = outDir + "/" + stem + "_det.png";
         cv::imwrite(outPath, out);
-        std::cout << imgName << ": GT=" << gt[imgName].size() << " candidati=" << cands.size()
-                   << " dopo cascata+NMS=" << kept.size() << " -> " << outPath << "\n";
+        std::cout << imgName << ": GT=" << gt[imgName].size() << " candidates=" << cands.size()
+                   << " after cascade+NMS=" << kept.size() << " -> " << outPath << "\n";
     }
 
     return 0;

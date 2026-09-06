@@ -3,9 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <opencv2/core.hpp>
-#include <opencv2/core/hal/interface.h>
-#include <opencv2/core/mat.hpp>
-#include <opencv2/core/types.hpp>
 #include <opencv2/imgproc.hpp>
 #include <vector>
 #include "utils.hpp"
@@ -117,25 +114,4 @@ std::vector<cv::Rect> colorProposals(const cv::Mat& imgBGR){
     //find the candidates for cones
     std::vector<cv::Rect> candidates = findCandidateBoxes(mask, imgBGR.size());
     return candidates;
-}
-
-//calculates the recall of the chosen candidates
-double candidateRecall(const std::vector<cv::Rect>& proposals, const std::vector<cv::Rect>& groundTruth, double iouThr){
-    if(groundTruth.empty())
-    {
-        return -1.0; // nothing to measure
-    }
-    int covered = 0;
-    for(const cv::Rect& gt : groundTruth)
-    {
-        for(const cv::Rect& p : proposals)
-        {
-            if(calculateIoU(p, gt) >= iouThr)
-            {
-                ++covered;
-                break;
-            }
-        }
-    }
-    return double(covered) / groundTruth.size();
 }

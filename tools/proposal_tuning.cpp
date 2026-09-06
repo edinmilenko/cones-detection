@@ -1,15 +1,15 @@
-// File a parte, non collegato a CMakeLists: prototipa varianti della pipeline colorMask+morph
-// (senza toccare src/color_proposals.cpp) e misura coverage (IoU>=0.3) + conteggio medio
-// candidati/immagine sul test set intero, per confrontarle onestamente prima di decidere se
-// portare qualcosa in src/. Diagnosi che ha motivato questo esperimento (mask_coverage_diag.cpp,
-// coverage_diag.cpp): il 55% delle GT box del test set non e' coperta da nessun candidato;
-// il 15% e' uccisa interamente dalla morfologia (mask non vuota prima, vuota dopo), soprattutto
-// box piccole (mediana altezza 18px vs 30px delle coperte) la cui maschera colore e' probabile
-// sia frammentata in isole piccole invece che un blob solido (compressione/antialiasing a
-// distanza) — l'opening attuale gira PRIMA della closing e le cancella prima che la closing
+// Standalone file, not wired into CMakeLists: prototypes variants of the colorMask+morph pipeline
+// (without touching src/color_proposals.cpp) and measures coverage (IoU>=0.3) plus the average
+// candidate count per image over the whole test set, to compare them fairly before deciding whether
+// to take anything into src/. What prompted the experiment (mask_coverage_diag.cpp,
+// coverage_diag.cpp): 55% of the GT boxes in the test set are covered by no candidate at all, and
+// 15% are wiped out entirely by the morphology (mask not empty before, empty after), mostly small
+// boxes (median height 18px against 30px for the covered ones) whose color mask is probably
+// fragmented into little islands rather than one solid blob (compression and antialiasing at
+// distance) — the current opening runs BEFORE the closing and erases them before the closing
 // possa fonderle. Qui si prova a invertire l'ordine.
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I/usr/include/opencv4 \
 //     ../tools/proposal_tuning.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc \
@@ -67,7 +67,7 @@ std::vector<cv::Rect> findCandidateBoxes(const cv::Mat& mask){
     return candidates;
 }
 
-// variante attuale in src/color_proposals.cpp: opening poi closing
+// the variant currently in src/color_proposals.cpp: opening then closing
 std::vector<cv::Rect> variantBaseline(const cv::Mat& imgBGR){
     cv::Mat corrected = whiteBalance(imgBGR, 6.0);
     cv::Mat mask = colorMask(corrected, 80, 60);
@@ -78,11 +78,11 @@ std::vector<cv::Rect> variantBaseline(const cv::Mat& imgBGR){
     return findCandidateBoxes(mask);
 }
 
-// vincitore del giro precedente (closing 5x9 poi opening 3x3): gia' portato in
-// src/color_proposals.cpp. Qui riparte lo sweep sulle soglie S/V della colorMask: nella diagnosi
-// (coverage_diag.cpp) la saturazione mediana delle GT box mancate (66) era gia' sotto l'attuale
-// soglia 80, quindi probabile che la soglia sia troppo aggressiva per coni piccoli/lontani dove
-// il colore si diluisce con lo sfondo per via di anti-aliasing/compressione.
+// winner of the previous round (closing 5x9 then opening 3x3): already taken into
+// src/color_proposals.cpp. The sweep over the S/V thresholds of colorMask starts again here: in the
+// diagnosis (coverage_diag.cpp) the median saturation of the missed GT boxes (66) was already below
+// the current threshold of 80, so the threshold is probably too aggressive for small or far cones,
+// where the color bleeds into the background through anti-aliasing and compression.
 std::vector<cv::Rect> morphWinner(const cv::Mat& mask){
     cv::Mat out = mask.clone();
     cv::Mat elemOpen = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3,3));
@@ -158,7 +158,7 @@ int main(int argc, char** argv){
             }
         }
         std::cout << v.name << ":  coverage=" << (100.0*nCovered/nGt) << "%  ("
-                   << nCovered << "/" << nGt << ")   candidati/immagine=" << (double(nCands)/nImg) << "\n";
+                   << nCovered << "/" << nGt << ")   candidates/image=" << (double(nCands)/nImg) << "\n";
     }
 
     return 0;

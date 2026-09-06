@@ -1,10 +1,10 @@
-// File a parte, non collegato a CMakeLists: per ogni GT box del test set non coperta da
-// nessun candidato colorProposals() con IoU>=0.3, stampa altezza/larghezza della box e la
-// tinta/saturazione/valore mediani dei suoi pixel, per capire se il mancato aggancio e'
-// un problema di dimensione (box troppo piccola, uccisa dall'opening) o di colore (fuori
+// Standalone file, not wired into CMakeLists: for every GT box in the test set that no
+// colorProposals() candidate covers at IoU>=0.3, prints the height and width of the box and the
+// median hue/saturation/value of its pixels, to tell whether the miss is a size problem (box too
+// small, killed by the opening) or a color one (outside
 // dalle bande HSV filtrate da colorMask).
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I/usr/include/opencv4 \
 //     ../tools/coverage_diag.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc \
@@ -115,20 +115,20 @@ int main(int argc, char** argv){
                    << " mean=" << (sum/v.size()) << "\n";
     };
 
-    std::cout << "totale GT: " << totalGt << ", non coperte (IoU<0.3): " << missed
+    std::cout << "total GT: " << totalGt << ", not covered (IoU<0.3): " << missed
                << " (" << (100.0*missed/totalGt) << "%)\n\n";
     std::cout << "--- dimensioni box ---\n";
-    stat("altezza  coperte", coveredH);
-    stat("altezza  MANCATE", missedH);
-    stat("larghezza coperte", coveredW);
-    stat("larghezza MANCATE", missedW);
-    std::cout << "\n--- colore mediano dentro la box (HSV, scala OpenCV 0-179/0-255/0-255) ---\n";
-    statd("hue coperte", coveredHue);
-    statd("hue MANCATE", missedHue);
-    statd("sat coperte", coveredSat);
-    statd("sat MANCATE", missedSat);
-    statd("val coperte", coveredVal);
-    statd("val MANCATE", missedVal);
+    stat("height  covered", coveredH);
+    stat("height  MISSED", missedH);
+    stat("width covered", coveredW);
+    stat("width MISSED", missedW);
+    std::cout << "\n--- median color inside the box (HSV, OpenCV scale 0-179/0-255/0-255) ---\n";
+    statd("hue covered", coveredHue);
+    statd("hue MISSED", missedHue);
+    statd("sat covered", coveredSat);
+    statd("sat MISSED", missedSat);
+    statd("val covered", coveredVal);
+    statd("val MISSED", missedVal);
 
     return 0;
 }

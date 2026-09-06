@@ -5,7 +5,7 @@ build/
 data/
 debug/
 fsoco_bounding_boxes_train/
-fsoco_segmentation_train-001/
+fsoco_segmentation_train/
 labeled/
 segmentation_test
 .DS_Store

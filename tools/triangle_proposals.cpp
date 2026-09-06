@@ -1,14 +1,13 @@
-// File a parte, non collegato a CMakeLists: approccio geometrico invece che color-blob puro.
-// Idea dell'utente: i coni sono triangoli (in silhouette): due lati obliqui che convergono
-// verso l'apice in alto, base orizzontale in basso. Invece di indovinare la taglia del box
-// (dense_grid_proposals.cpp, altezze assolute alla cieca), si cercano le linee vere con Hough,
-// si accoppia una linea "sinistra" (scende da sinistra verso l'apice, dx/dy>0 in coordinate
-// immagine) con una "destra" (dx/dy<0) il cui apice combacia, e il bbox del triangolo risultante
-// e' il candidato. Il colore resta usato SOLO per delimitare le regioni di ricerca (dove cercare
-// le linee), non per definire il box come nella pipeline attuale — la taglia/posizione esatta
-// viene dalla geometria, non dal blob.
+// Standalone file, not wired into CMakeLists: a geometric approach instead of the plain color blob.
+// The idea: cones are triangles in silhouette, two slanted sides converging on the apex at the top
+// and a horizontal base at the bottom. Rather than guessing the box size (dense_grid_proposals.cpp,
+// absolute heights picked blind), the real lines are found with Hough, a "left" line (descending
+// from the left towards the apex, dx/dy>0 in image coordinates) is paired with a "right" one
+// (dx/dy<0) whose apex matches, and the bbox of the resulting triangle is the candidate. Color is
+// used ONLY to bound the search regions (where to look for lines), not to define the box as in the
+// current pipeline — the exact size and position come from the geometry, not from the blob.
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I/usr/include/opencv4 \
 //     ../tools/triangle_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc \
@@ -58,10 +57,10 @@ cv::Mat colorMask(const cv::Mat& imgBGR){
 
 struct Segment { cv::Point top, bottom; double dxdy; };
 
-// dx/dy>0 = "lato sinistro" del cono (sale verso destra andando verso l'apice), dx/dy<0 =
-// "lato destro". Scarta segmenti troppo corti o troppo vicini all'orizzontale/verticale (bordi
-// del terreno, ombre, texture d'erba: quasi tutte le linee spurie in una scena naturale sono
-// vicine all'orizzontale).
+// dx/dy>0 = the "left side" of the cone (rising to the right as it goes towards the apex), dx/dy<0
+// = the "right side". Drops segments that are too short or too close to horizontal or vertical (edges
+// of the ground, shadows, grass texture: nearly every spurious line in a natural scene is
+// close to horizontal).
 std::vector<Segment> classifySegments(const std::vector<cv::Vec4i>& lines, double minAngleDeg, double maxAngleDeg){
     std::vector<Segment> out;
     for(const auto& l : lines){
@@ -83,13 +82,13 @@ enum class Smooth { None, Gaussian, Bilateral, Median };
 struct Config {
     std::string name;
     Smooth smooth;
-    int smoothParam; // Gaussian/Median: dimensione kernel (dispari); Bilateral: diametro
+    int smoothParam; // Gaussian/Median: kernel size (odd); Bilateral: diameter
     int cannyLo, cannyHi;
     int houghThr, minLineLen, maxLineGap;
-    double minAngleDeg, maxAngleDeg; // range accettato per i lati del cono, gradi dalla verticale
-    double apexTolFrac;   // tolleranza orizzontale tra gli apici delle due linee, frazione dell'altezza combinata
-    double roiMarginMult; // ROI di ricerca intorno al blob colore: multiplo della sua altezza
-    double minColorFrac;  // frazione minima di pixel-maschera dentro il bbox candidato finale
+    double minAngleDeg, maxAngleDeg; // accepted range for the cone sides, degrees from vertical
+    double apexTolFrac;   // horizontal tolerance between the apices of the two lines, fraction of the combined height
+    double roiMarginMult; // search ROI around the color blob: a multiple of its height
+    double minColorFrac;  // smallest fraction of mask pixels inside the final candidate bbox
 };
 
 std::vector<cv::Rect> runConfig(const cv::Mat& imgBGR, const Config& cfg){
@@ -110,9 +109,9 @@ std::vector<cv::Rect> runConfig(const cv::Mat& imgBGR, const Config& cfg){
     cv::HoughLinesP(edges, linesRaw, 1, CV_PI/180, cfg.houghThr, cfg.minLineLen, cfg.maxLineGap);
     std::vector<Segment> segments = classifySegments(linesRaw, cfg.minAngleDeg, cfg.maxAngleDeg);
 
-    // fonde i blob vicini in regioni di ricerca prima di cercare le linee: senza questo, migliaia
+    // merges nearby blobs into search regions before looking for lines: without this, thousands
     // di frammenti generano ROI quasi identiche e sovrapposte, ripetendo lo stesso pairing di
-    // linee decine di volte (spiega i milioni di candidati/immagine della prima versione).
+    // of lines dozens of times over (which explains the millions of candidates per image the first version produced).
     cv::Mat merged;
     cv::dilate(mask, merged, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(9,9)));
     std::vector<std::vector<cv::Point>> contours;
@@ -134,7 +133,7 @@ std::vector<cv::Rect> runConfig(const cv::Mat& imgBGR, const Config& cfg){
         roi.width = std::min(roi.width, imgBGR.cols - roi.x);
         roi.height = std::min(roi.height, imgBGR.rows - roi.y);
 
-        // segmenti il cui midpoint cade nella ROI
+        // segments whose midpoint falls inside the ROI
         std::vector<const Segment*> inRoi;
         for(const auto& s : segments){
             cv::Point mid((s.top.x + s.bottom.x)/2, (s.top.y + s.bottom.y)/2);
@@ -229,7 +228,7 @@ int main(int argc, char** argv){
             }
         }
         std::cout << cfg.name << ":  coverage=" << (100.0*nCovered/nGt) << "%  ("
-                   << nCovered << "/" << nGt << ")   candidati/immagine=" << (double(nCands)/nImg) << "\n";
+                   << nCovered << "/" << nGt << ")   candidates/image=" << (double(nCands)/nImg) << "\n";
     }
 
     return 0;

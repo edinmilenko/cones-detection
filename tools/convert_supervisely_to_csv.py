@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# File a parte, non collegato a CMakeLists: converte le annotazioni Supervisely (bitmap in
-# base64+zlib, con offset "origin") del vero test set esterno (test_set/segmentation_test) nello
-# stesso formato CSV usato da tutta la pipeline C++ per data/dataset.csv (image,x1,y1,x2,y2), cosi'
-# funnel_analysis/eval_detector/eval_cascade possono girare sul test set reale senza modifiche
-# strutturali, solo puntando a file diversi.
+# Standalone file, not wired into CMakeLists: converts the Supervisely annotations (bitmaps in
+# base64+zlib, with an "origin" offset) of the real external test set (test_set/segmentation_test)
+# into the same CSV format the whole C++ pipeline uses for data/dataset.csv (image,x1,y1,x2,y2), so
+# funnel_analysis/eval_detector/eval_cascade can run on the real test set with no structural
+# changes, just pointed at different files.
 #
 # Uso: python3 tools/convert_supervisely_to_csv.py
 # Scrive: data/dataset_real.csv, data/test_real.txt
@@ -30,7 +30,7 @@ CONE_CLASSES = {"seg_blue_cone", "seg_yellow_cone", "seg_orange_cone",
 def decode_bitmap_bbox(obj):
     """Decodifica il campo bitmap.data (base64+zlib di un PNG) e ritorna la bbox
     (x1,y1,x2,y2) in coordinate immagine, usando origin + la bbox del contenuto non a zero
-    della maschera (piu' robusto di fidarsi solo delle dimensioni del PNG, in caso di padding)."""
+    of the mask (more robust than trusting the PNG dimensions alone, in case of padding)."""
     raw = base64.b64decode(obj["bitmap"]["data"])
     png_bytes = zlib.decompress(raw)
     mask = np.array(Image.open(io.BytesIO(png_bytes)))
@@ -82,7 +82,7 @@ def main():
     OUT_CSV.write_text("\n".join(rows) + "\n")
     OUT_SPLIT.write_text("\n".join(img_names) + "\n")
 
-    print(f"immagini: {len(img_names)}, box totali: {n_boxes}, oggetti non-cono saltati: {n_skipped_class}")
+    print(f"images: {len(img_names)}, total boxes: {n_boxes}, non-cone objects skipped: {n_skipped_class}")
     print(f"scritto: {OUT_CSV}")
     print(f"scritto: {OUT_SPLIT}")
 

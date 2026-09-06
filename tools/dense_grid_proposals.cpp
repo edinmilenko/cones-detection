@@ -1,15 +1,14 @@
-// File a parte, non collegato a CMakeLists: approccio radicalmente diverso dal blob-bbox
-// puro di color_proposals.cpp. Idea: invece di prendere UN box = UN blob (fragile per coni
-// piccoli/lontani la cui maschera e' frammentata o copre solo una parte del cono, es. solo la
-// punta), si usa la maschera colore (permissiva, niente filtro area, niente opening aggressivo)
-// solo per delimitare REGIONI di interesse, e dentro ogni regione si genera una GRIGLIA di
-// candidati aspect-normalizzati a piu' scale, tassellando la bbox del blob invece di fidarsi
-// della sua forma esatta. Il costo e' candidati/immagine molto piu' alti (il classificatore a
-// valle, gia' riallenato sui candidati reali, deve filtrare di piu'), il beneficio atteso e'
-// una coverage molto piu' alta perche' basta che il blob esista da qualche parte vicino al cono,
-// non che la sua bbox combaci.
+// Standalone file, not wired into CMakeLists: a radically different approach from the plain
+// blob-bbox of color_proposals.cpp. The idea: instead of ONE box = ONE blob (fragile for small or
+// far cones whose mask is fragmented or covers only part of the cone, say just the tip), the color
+// mask (permissive, no area filter, no aggressive opening) is used only to mark REGIONS of
+// interest, and inside each region a GRID of aspect-normalized candidates at several scales is
+// generated, tiling the bbox of the blob instead of trusting its exact shape. The cost is far more
+// candidates per image (the classifier downstream, already retrained on real candidates, has to
+// filter harder), the hoped-for benefit is much higher coverage, because the blob only has to
+// exist somewhere near the cone rather than have a matching bbox.
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I/usr/include/opencv4 \
 //     ../tools/dense_grid_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc \
@@ -57,14 +56,14 @@ cv::Mat colorMask(const cv::Mat& imgBGR){
     return mask;
 }
 
-// tassella una regione (bbox di un blob, magari grande e irregolare) con finestre
-// aspect-normalizzate ad altezze ASSOLUTE (non relative alla dimensione del blob: un blob
-// puo' essere un frammento minuscolo di un cono molto piu' grande, usare la sua altezza come
-// riferimento sottostima sistematicamente la finestra). stride = meta' finestra.
-// tassella SOLO dove la maschera originale (non dilatata) ha davvero pixel di colore: la bbox
-// del blob dilatato serve solo a delimitare l'area di ricerca, ma tassellarla per intero (specie
-// se il dilate ha fuso mezza immagine) genera candidati quasi tutti su sfondo puro. Si scarta
-// una finestra se non contiene nessun pixel della maschera originale.
+// tiles a region (the bbox of a blob, possibly large and irregular) with aspect-normalized windows
+// at ABSOLUTE heights (not relative to the blob size: a blob can be a tiny fragment of a much
+// bigger cone, and using its height as the reference systematically undersizes the window).
+// stride = half a window.
+// Only tiles where the original (undilated) mask really has colored pixels: the bbox of the dilated
+// blob just bounds the search area, but tiling all of it (especially when the dilate has merged
+// half the image) yields candidates that are nearly all pure background. A window is dropped if it
+// contains no pixel of the original mask.
 std::vector<cv::Rect> tileRegion(const cv::Rect& region, cv::Size imgSize,
                                    const std::vector<double>& heights, const cv::Mat& rawMask,
                                    double minCoverageFrac){
@@ -74,7 +73,7 @@ std::vector<cv::Rect> tileRegion(const cv::Rect& region, cv::Size imgSize,
         double strideY = std::max(4.0, h * 0.5);
         double strideX = std::max(4.0, w * 0.5);
 
-        double y0 = region.y - h * 0.25; // un po' di margine oltre i bordi della regione
+        double y0 = region.y - h * 0.25; // a little margin beyond the region edges
         double y1 = region.y + region.height + h * 0.25;
         double x0 = region.x - w * 0.25;
         double x1 = region.x + region.width + w * 0.25;
@@ -99,9 +98,9 @@ std::vector<cv::Rect> tileRegion(const cv::Rect& region, cv::Size imgSize,
     return out;
 }
 
-// un box per blob per ogni altezza assoluta, centrato sul centroide del blob: niente tiling
-// spaziale (niente stride), molto piu' economico del grid completo. Assume che il centro del
-// blob (anche se frammento) sia una stima ragionevole del centro del cono vero.
+// one box per blob per absolute height, centred on the blob centroid: no spatial tiling (no
+// stride), much cheaper than the full grid. Assumes the centre of the blob, fragment or not, is a
+// reasonable estimate of the centre of the real cone.
 std::vector<cv::Rect> centeredMultiScale(const cv::Rect& region, cv::Size imgSize,
                                           const std::vector<double>& heights, double snapGrid){
     std::vector<cv::Rect> out;
@@ -131,17 +130,17 @@ struct Config {
     std::string name;
     Mode mode;
     cv::Size dilateKernel; // fonde frammenti vicini in un'unica regione prima di trovare i contorni
-    double maxAreaFrac;    // per scartare le regioni enormi (cielo/erba interi), non i blob normali
-    std::vector<double> heights; // altezze ASSOLUTE (px) delle finestre generate
-    double minCoverageFrac; // (solo GridTile) frazione minima di pixel-maschera dentro la finestra
-    double snapGrid = 0;    // (solo CenteredMultiScale) arrotonda il centroide a una griglia, cosi'
+    double maxAreaFrac;    // to drop huge regions (whole sky or grass), not normal blobs
+    std::vector<double> heights; // ABSOLUTE heights (px) of the generated windows
+    double minCoverageFrac; // (GridTile only) smallest fraction of mask pixels inside the window
+    double snapGrid = 0;    // (CenteredMultiScale only) snaps the centroid to a grid, so that
                              // frammenti vicini generano lo stesso box (deduplicato) invece di box diversi
-    int minBlobAreaPx = 1;  // scarta i blob (contorni della maschera grezza) piu' piccoli di questo
+    int minBlobAreaPx = 1;  // drops blobs (contours of the raw mask) smaller than this
 };
 
-// molti frammenti vicini generano candidati quasi identici (stesso box arrotondato alla
-// stessa posizione/scala): deduplica per tenere il conteggio sotto controllo senza perdere
-// copertura (un duplicato non aggiunge mai un IoU migliore).
+// many nearby fragments produce nearly identical candidates (same box rounded to the
+// same position and scale): dedup keeps the count under control without losing coverage, since a
+// duplicate never adds a better IoU.
 std::vector<cv::Rect> dedup(std::vector<cv::Rect> boxes){
     std::sort(boxes.begin(), boxes.end(), [](const cv::Rect& a, const cv::Rect& b){
         if(a.x != b.x) return a.x < b.x;
@@ -238,7 +237,7 @@ int main(int argc, char** argv){
             }
         }
         std::cout << cfg.name << ":  coverage=" << (100.0*nCovered/nGt) << "%  ("
-                   << nCovered << "/" << nGt << ")   candidati/immagine=" << (double(nCands)/nImg) << "\n";
+                   << nCovered << "/" << nGt << ")   candidates/image=" << (double(nCands)/nImg) << "\n";
     }
 
     return 0;

@@ -1,14 +1,14 @@
-// File a parte, non collegato a CMakeLists: imbuto recall per stadio (proposal -> soglia ->
-// NMS) e percentili dello score raw per candidati "buoni" (IoU>=0.3 con un cono vero) vs
-// "cattivi" (IoU<0.05 con qualsiasi cono), sulla stessa lista di immagini per ogni
-// combinazione candidati/modello, per isolare dove si perde davvero la recall.
+// Standalone file, not wired into CMakeLists: recall funnel per stage (proposal -> threshold ->
+// NMS) and percentiles of the raw score for "good" candidates (IoU>=0.3 with a real cone) against
+// "bad" ones (IoU<0.05 with any cone), over the same list of images for each candidate/model
+// combination, to pin down where the recall is actually lost.
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I../tools -I/usr/include/opencv4 \
 //     ../tools/funnel_analysis.cpp ../src/hog.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_objdetect -lopencv_ml \
 //     -o funnel_analysis
-//   ./funnel_analysis <model.yml> <raw|aspect> [soglia] [numero_immagini] [seed]
+//   ./funnel_analysis <model.yml> <raw|aspect> [threshold] [image_count] [seed]
 
 #include "detector_common.hpp"
 #include "hog.hpp"
@@ -43,7 +43,7 @@ double percentile(std::vector<float> v, double p){
 
 int main(int argc, char** argv){
     if(argc < 3){
-        std::cerr << "uso: funnel_analysis <model.yml> <raw|aspect> [soglia] [numero_immagini] [seed]\n";
+        std::cerr << "uso: funnel_analysis <model.yml> <raw|aspect> [threshold] [numero_images] [seed]\n";
         return 1;
     }
     std::string modelPath = argv[1];
@@ -122,7 +122,7 @@ int main(int argc, char** argv){
             else if(bestIou < 0.05) unmatchedScores.push_back(s);
         }
 
-        // stage 2 & 3, per GT box di questa immagine
+        // stages 2 and 3, per GT box of this image
         std::vector<bool> covered(gtBoxes.size(), false), survivesThr(gtBoxes.size(), false);
         for(size_t g = 0; g < gtBoxes.size(); g++){
             for(size_t i = 0; i < cands.size(); i++){
@@ -133,7 +133,7 @@ int main(int argc, char** argv){
             }
         }
 
-        // stage 4: NMS sui candidati sopra soglia, poi matching greedy per punteggio (stessa logica di eval_detector)
+        // stage 4: NMS over the candidates above threshold, then greedy matching by score (same logic as eval_detector)
         std::vector<cv::Rect> keptBoxes;
         std::vector<float> keptScores;
         for(size_t i = 0; i < cands.size(); i++){
@@ -159,19 +159,19 @@ int main(int argc, char** argv){
         }
     }
 
-    std::cout << "=== IMBUTO (" << mode << ", modello=" << modelPath << ", thr=" << thr << ", n_img=" << nSample << ") ===\n";
+    std::cout << "=== FUNNEL (" << mode << ", model=" << modelPath << ", thr=" << thr << ", n_img=" << nSample << ") ===\n";
     std::cout << "1. GT totali:                          " << nGt << "\n";
-    std::cout << "2. coperte da un candidato (IoU>=0.3):  " << nCovered << "  (" << (100.0*nCovered/nGt) << "%)\n";
-    std::cout << "3. sopravvivono alla soglia:            " << nSurvivesThr << "  (" << (100.0*nSurvivesThr/nGt) << "% del totale, "
-               << (100.0*nSurvivesThr/std::max<long long>(nCovered,1)) << "% di quelle coperte)\n";
-    std::cout << "4. sopravvivono alla NMS:               " << nSurvivesNms << "  (" << (100.0*nSurvivesNms/nGt) << "% del totale, "
-               << (100.0*nSurvivesNms/std::max<long long>(nSurvivesThr,1)) << "% di quelle sopra soglia)\n";
+    std::cout << "2. covered by a candidate (IoU>=0.3):  " << nCovered << "  (" << (100.0*nCovered/nGt) << "%)\n";
+    std::cout << "3. survive the threshold:              " << nSurvivesThr << "  (" << (100.0*nSurvivesThr/nGt) << "% of the total, "
+               << (100.0*nSurvivesThr/std::max<long long>(nCovered,1)) << "% of quelle covered)\n";
+    std::cout << "4. survive the NMS:                    " << nSurvivesNms << "  (" << (100.0*nSurvivesNms/nGt) << "% of the total, "
+               << (100.0*nSurvivesNms/std::max<long long>(nSurvivesThr,1)) << "% of quelle sopra threshold)\n";
 
-    std::cout << "\n=== SCORE RAW: candidati che matchano un cono (IoU>=0.3), n=" << matchedScores.size() << " ===\n";
+    std::cout << "\n=== RAW SCORE: candidates matching a cone (IoU>=0.3), n=" << matchedScores.size() << " ===\n";
     for(double p : {0.0, 10.0, 25.0, 50.0, 75.0, 90.0, 100.0}){
         std::cout << "  p" << p << ": " << percentile(matchedScores, p) << "\n";
     }
-    std::cout << "=== SCORE RAW: candidati senza nessun cono vicino (IoU<0.05), n=" << unmatchedScores.size() << " ===\n";
+    std::cout << "=== RAW SCORE: candidates with no cone nearby (IoU<0.05), n=" << unmatchedScores.size() << " ===\n";
     for(double p : {0.0, 10.0, 25.0, 50.0, 75.0, 90.0, 100.0}){
         std::cout << "  p" << p << ": " << percentile(unmatchedScores, p) << "\n";
     }

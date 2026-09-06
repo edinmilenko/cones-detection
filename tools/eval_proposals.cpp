@@ -1,9 +1,9 @@
-// File a parte, non collegato a CMakeLists: misura la recall di colorProposals() (IoU>=0.3,
-// via candidateRecall() gia' nel repo) su un campione di immagini del test set, per validare
-// le modifiche fatte a color_proposals.cpp (soglie S/V alzate 60/40 -> 80/60, filtro area
-// massima 1% sui candidati).
+// Standalone file, not wired into CMakeLists: measures the recall of colorProposals() (IoU>=0.3,
+// through candidateRecall(), already in the repo) over a sample of test images, to check the
+// changes made to color_proposals.cpp (S/V thresholds raised 60/40 -> 80/60, area filter
+// capped at 1% on the candidates).
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I/usr/include/opencv4 \
 //     ../tools/eval_proposals.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_ml \
@@ -11,6 +11,7 @@
 //   ./eval_proposals [numero_immagini] [seed]
 
 #include "color_proposals.hpp"
+#include "utils.hpp"
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -83,10 +84,10 @@ int main(int argc, char** argv){
         }
     }
 
-    std::cout << "immagini valutate: " << nUsed << '\n';
-    std::cout << "recall media (IoU>=0.3): " << (recallSum / nUsed) << '\n';
-    std::cout << "immagini con almeno un blob >3% area immagine: " << bigBlobImgs << '\n';
-    std::cout << "candidati medi per immagine: " << (double(totalCandidates) / nUsed) << '\n';
+    std::cout << "images evaluated: " << nUsed << '\n';
+    std::cout << "recall mean (IoU>=0.3): " << (recallSum / nUsed) << '\n';
+    std::cout << "images with at least one blob >3% of image area: " << bigBlobImgs << '\n';
+    std::cout << "mean candidates per image: " << (double(totalCandidates) / nUsed) << '\n';
 
     return 0;
 }

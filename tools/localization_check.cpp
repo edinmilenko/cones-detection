@@ -1,9 +1,9 @@
 // Variante ad-hoc di eval_real.cpp: invece di sweepare stage2_thr a NMS fissa (0.4), fissa
-// stage2_thr al punto di miglior F1 gia' trovato (0.01) e sweepa la soglia IoU dell'NMS, per
-// misurare l'effetto di un NMS piu' aggressivo sui cluster densi (osservato in ka_00061:
-// piu' box sovrapposti sullo stesso cono con NMS 0.4).
+// stage2_thr at the best-F1 point already found (0.01) and sweeps the NMS IoU threshold, to measure
+// what a more aggressive NMS does on dense clusters (seen in ka_00061: several overlapping boxes on
+// the same cone with NMS 0.4).
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I../tools -I/usr/include/opencv4 \
 //     ../tools/eval_real_nms_sweep.cpp ../src/hog.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_objdetect -lopencv_ml \
@@ -62,7 +62,7 @@ int main(int argc, char** argv){
         const auto& gtBoxes = it->second;
 
         cv::Mat bgr = cv::imread(datasetDir + "/" + imgName, cv::IMREAD_COLOR);
-        if(bgr.empty()){ std::cerr << "immagine non trovata: " << imgName << "\n"; continue; }
+        if(bgr.empty()){ std::cerr << "image not found: " << imgName << "\n"; continue; }
         cv::Mat gray; cv::cvtColor(bgr, gray, cv::COLOR_BGR2GRAY);
 
         std::vector<cv::Rect> cands = colorProposals(bgr);
@@ -99,10 +99,10 @@ int main(int argc, char** argv){
         data.push_back(std::move(d));
     }
 
-    std::cout << "=== TEST SET REALE (" << data.size() << " immagini, " << nGt << " GT box) ===\n";
-    std::cout << "candidati/immagine: " << (double(totalCands)/data.size()) << "\n";
-    std::cout << "coverage (IoU>=0.3, nessun classificatore): " << (100.0*nCovered/nGt) << "%\n";
-    std::cout << "sopravvissuti allo stadio 1/immagine: " << (double(survivedStage1)/data.size()) << "\n\n";
+    std::cout << "=== REAL TEST SET (" << data.size() << " images, " << nGt << " GT box) ===\n";
+    std::cout << "candidates/image: " << (double(totalCands)/data.size()) << "\n";
+    std::cout << "coverage (IoU>=0.3, no classifier): " << (100.0*nCovered/nGt) << "%\n";
+    std::cout << "survivors of stage 1/image: " << (double(survivedStage1)/data.size()) << "\n\n";
 
     const float thr2 = thr2Arg;
     std::vector<ImgData> filtered;
@@ -114,8 +114,8 @@ int main(int argc, char** argv){
         filtered.push_back(std::move(fd));
     }
 
-    // per ogni TP (a nms_iou=0.1, la config scelta) registra l'IoU col GT abbinato: se i box
-    // fossero ben centrati la maggior parte starebbe vicino a 1.0, non appena sopra la soglia 0.3.
+    // for each TP (at nms_iou=0.1, the chosen config) records the IoU with the matched GT: if the
+    // boxes were well centred most would sit near 1.0, not just above the 0.3 threshold.
     std::vector<double> matchedIous;
     for(double iouThr : {0.1}){
         long long tp = 0, fp = 0, fn = 0;
@@ -145,7 +145,7 @@ int main(int argc, char** argv){
         auto pct = [&](double p){ return matchedIous[(size_t)(p * (matchedIous.size()-1))]; };
         int over50 = 0, over70 = 0;
         for(double v : matchedIous){ if(v >= 0.5) over50++; if(v >= 0.7) over70++; }
-        std::cout << "  IoU dei TP: min=" << matchedIous.front() << " p25=" << pct(0.25)
+        std::cout << "  IoU of the TP: min=" << matchedIous.front() << " p25=" << pct(0.25)
                    << " p50=" << pct(0.5) << " p75=" << pct(0.75) << " max=" << matchedIous.back()
                    << "  (>=0.5: " << (100.0*over50/matchedIous.size()) << "%, >=0.7: "
                    << (100.0*over70/matchedIous.size()) << "%)\n";

@@ -1,25 +1,25 @@
-// File a parte, non collegato a CMakeLists: pipeline finale di detection --
-// colorProposals() -> normalizzazione aspect ratio -> classificazione con il modello
-// SVMSGD riaddestrato con hard negative mining -> soglia sullo score raw -> NMS.
+// Standalone file, not wired into CMakeLists: the final detection pipeline --
+// colorProposals() -> aspect ratio normalization -> classification with the SVMSGD model retrained
+// through hard negative mining -> threshold on the raw score -> NMS.
 // Disegna GT (verde) e detection accettate (rosso) su qualche immagine di test.
 //
-// Storia (per chi legge dopo): la primissima versione usava HOGDescriptor::detectMultiScale
-// (sliding window esaustivo): centinaia di migliaia di finestre per immagine, minuti a testarne
-// una sola, falsi positivi ovunque perche' saltava lo stadio dei proposal. La seconda versione
-// collegava colorProposals() cosi' com'era: niente piu' box su cielo/alberi, ma recall dei
-// candidati ~50% e, soprattutto, il classificatore rifiutava la maggioranza dei candidati anche
-// quando erano ben localizzati sopra un cono vero, perche' un blob colore ha una forma arbitraria
-// (spesso solo la fascia colorata, non tutto il cono) molto diversa dai crop puliti su cui era
-// stato addestrato. Questa versione normalizza ogni blob all'aspect ratio di kPatchSize prima di
-// classificarlo, e usa un modello riaddestrato con hard negative mining (i falsi positivi del
-// vecchio modello sui candidati colore delle immagini di TRAIN, aggiunti come negativi).
+// History, for whoever reads this later: the very first version used HOGDescriptor::detectMultiScale
+// (exhaustive sliding window): hundreds of thousands of windows per image, minutes to test a single
+// one, false positives everywhere because it skipped the proposal stage. The second version wired in
+// colorProposals() as it was: no more boxes on sky and trees, but candidate recall around 50% and,
+// worse, the classifier rejected most candidates even when they sat squarely on a real cone,
+// because a color blob has an arbitrary shape (often just the colored band, not the whole cone)
+// very unlike the clean crops it had been trained on. This version normalizes every blob to the
+// aspect ratio of kPatchSize before classifying it, and uses a model retrained with hard negative
+// mining (the false positives of the old model on the color candidates of the TRAIN images, added
+// as negatives).
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I../tools -I/usr/include/opencv4 \
 //     ../tools/visualize_detections.cpp ../src/hog.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_objdetect -lopencv_ml \
 //     -o visualize_detections
-//   ./visualize_detections [numero_immagini] [soglia_score] [modello.yml]
+//   ./visualize_detections [image_count] [score_threshold] [model.yml]
 
 #include "detector_common.hpp"
 #include "hog.hpp"
@@ -86,7 +86,7 @@ int main(int argc, char** argv){
     for(const auto& imgName : chosen){
         cv::Mat bgr = cv::imread(datasetDir + "/" + imgName, cv::IMREAD_COLOR);
         if(bgr.empty()){
-            std::cerr << "skip (non leggibile): " << imgName << "\n";
+            std::cerr << "skip (unreadable): " << imgName << "\n";
             continue;
         }
         cv::Mat gray;
@@ -123,8 +123,8 @@ int main(int argc, char** argv){
         std::string stem = imgName.substr(0, imgName.find_last_of('.'));
         std::string outPath = outDir + "/" + stem + "_det.png";
         cv::imwrite(outPath, color);
-        std::cout << imgName << ": GT=" << gt[imgName].size() << " candidati=" << candidates.size()
-                   << " sopra soglia=" << validBoxes.size() << " dopo NMS=" << kept.size()
+        std::cout << imgName << ": GT=" << gt[imgName].size() << " candidates=" << candidates.size()
+                   << " above threshold=" << validBoxes.size() << " after NMS=" << kept.size()
                    << " -> " << outPath << "\n";
     }
 

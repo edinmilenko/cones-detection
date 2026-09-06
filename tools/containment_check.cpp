@@ -1,11 +1,11 @@
-// ad-hoc, non collegato a CMakeLists: la cascata a due stadi e' allenata/valutata a IoU, ma il
-// requisito reale a valle (segmentazione fatta da un altro modulo) e' diverso: un box piu'
-// grande del cono va bene (la segmentazione lo rifinisce), un box che TAGLIA il cono no, quella
-// parte e' persa. Misura, sui box che la cascata VERA sceglie (non l'oracolo), quanta area del
-// GT resta dentro al box scelto (containment = area(box & GT) / area(GT)), prima e dopo un
-// padding post-hoc del box finale (nessun retraining: si allarga il box gia' scelto).
+// ad-hoc, not wired into CMakeLists: the two-stage cascade is trained and scored on IoU, but what
+// the next step actually needs (segmentation, done by another module) is different: a box bigger
+// than the cone is fine, the segmentation trims it, while a box that CUTS the cone is not, that
+// part is gone. Measures, on the boxes the REAL cascade picks (not an oracle), how much area of
+// GT stays inside the chosen box (containment = area(box & GT) / area(GT)), before and after a
+// post-hoc padding of the final box (no retraining: the box already chosen is just widened).
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I/usr/include/opencv4 \
 //     ../tools/containment_check.cpp ../src/hog.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_objdetect -lopencv_ml \
@@ -105,8 +105,8 @@ int main(int argc, char** argv){
             cv::Rect padded = padBox(boxes[idx], padTop, padBottom, padSide, bgr.size());
             paddedBoxes.push_back(padded);
 
-            // qui il matching IoU>=0.3 usa il box GIA' PADDATO: e' quello che esce
-            // davvero dalla pipeline e che verrebbe valutato a valle.
+            // the IoU>=0.3 matching here uses the box AFTER padding: that is what actually comes
+            // out of the pipeline and what the next step would be scored on.
             double bestIou = 0; int bestJ = -1;
             for(size_t j = 0; j < gtBoxes.size(); j++){
                 if(matched[j]) continue;
@@ -138,9 +138,9 @@ int main(int argc, char** argv){
     double recall = (tp+fn)>0 ? double(tp)/(tp+fn) : 0.0;
     std::cout << "pad top=" << padTop << " bottom=" << padBottom << " side=" << padSide << ":\n";
     std::cout << "  precision=" << precision << " recall=" << recall << " TP=" << tp << " FP=" << fp << " FN=" << fn << "\n";
-    std::cout << "  containment dei TP: min=" << containments.front() << " p25=" << pct(0.25)
+    std::cout << "  containment of the TP: min=" << containments.front() << " p25=" << pct(0.25)
                << " p50=" << pct(0.5) << " p75=" << pct(0.75) << " max=" << containments.back()
-               << "  (cono interamente dentro il box >=95%: " << (100.0*full95/containments.size())
+               << "  (cone fully inside the box >=95%: " << (100.0*full95/containments.size())
                << "%, >=99.9%: " << (100.0*full100/containments.size()) << "%)\n";
     return 0;
 }

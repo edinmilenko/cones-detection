@@ -1,9 +1,10 @@
-// File a parte, non collegato a CMakeLists: valuta la cascata a due stadi completa.
-// Stadio 1: lineare (svm_hog_sgd_proposal.yml) a soglia fissa (STAGE1_THR) — abbatte i candidati.
-// Stadio 2: RBF SVM (svm_stage2_rbf.yml) sui sopravvissuti, soglia variabile per la curva
-// precision/recall (come eval_detector.cpp, ma con la cascata invece del classificatore unico).
+// Standalone file, not wired into CMakeLists: scores the complete two-stage cascade.
+// Stage 1: linear (svm_hog_sgd_proposal.yml) at a fixed threshold (STAGE1_THR) — cuts the candidates down.
+// Stage 2: RBF SVM (svm_stage2_rbf.yml) over the survivors, threshold swept for the
+// precision/recall curve (like eval_detector.cpp, but with the cascade instead of a single
+// classifier).
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I../tools -I/usr/include/opencv4 \
 //     ../tools/eval_cascade.cpp ../src/hog.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_objdetect -lopencv_ml \
@@ -84,16 +85,16 @@ int main(int argc, char** argv){
 
             float s1 = shift;
             for(size_t j = 0; j < descriptor.size(); j++) s1 += W.at<float>(0, (int)j) * descriptor[j];
-            if(s1 <= stage1Thr) continue; // scartato dallo stadio 1
+            if(s1 <= stage1Thr) continue; // dropped by stage 1
             survivedStage1++;
 
             cv::Mat featRow(1, (int)descriptor.size(), CV_32F, descriptor.data());
             cv::Mat raw;
             stage2->predict(featRow, raw, cv::ml::StatModel::RAW_OUTPUT);
-            // cv::ml::SVM: RAW_OUTPUT e' la distanza con segno dall'iperpiano; per costruzione
-            // (label positiva=1 usata in training) valori PIU' NEGATIVI = piu' verso la classe
-            // positiva. Si inverte il segno per avere "punteggio piu' alto = piu' cono", come
-            // nello stadio 1 e nel resto della codebase.
+            // cv::ml::SVM: RAW_OUTPUT is the signed distance from the hyperplane; by construction
+            // (positive label=1 used in training) MORE NEGATIVE values mean more towards the
+            // positive class. The sign is flipped so that "higher score = more cone", as in stage 1
+            // and the rest of the codebase.
             float s2 = -raw.at<float>(0, 0);
 
             d.boxes.push_back(c);
@@ -102,9 +103,9 @@ int main(int argc, char** argv){
         data.push_back(std::move(d));
     }
 
-    std::cout << "immagini valutate: " << data.size() << " (stage1_thr=" << stage1Thr << ")\n";
-    std::cout << "candidati/immagine pre-stadio1: " << (double(totalCands)/data.size())
-               << "  sopravvissuti/immagine: " << (double(survivedStage1)/data.size()) << "\n\n";
+    std::cout << "images evaluated: " << data.size() << " (stage1_thr=" << stage1Thr << ")\n";
+    std::cout << "candidates/image pre-stage1: " << (double(totalCands)/data.size())
+               << "  survivors/image: " << (double(survivedStage1)/data.size()) << "\n\n";
 
     for(float thr2 : {-0.01f, -0.005f, 0.f, 0.005f, 0.01f, 0.015f, 0.02f, 0.03f, 0.05f, 0.08f, 0.1f, 0.13f, 0.15f, 0.18f, 0.2f, 0.25f, 0.3f}){
         long long tp = 0, fp = 0, fn = 0;

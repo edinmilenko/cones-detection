@@ -1,7 +1,7 @@
 #pragma once
-// Codice condiviso dai tool ad-hoc in tools/ (non collegato a CMakeLists, non tocca
-// patches.cpp/color_proposals.cpp/hog.cpp): generazione candidati a partire dai blob
-// colore di colorProposals(), normalizzazione dell'aspect ratio alla forma di kPatchSize,
+// Code shared by the ad-hoc tools in tools/ (not wired into CMakeLists, does not touch
+// patches.cpp/color_proposals.cpp/hog.cpp): candidate generation starting from the
+// color blobs of colorProposals(), aspect ratio normalization to the shape of kPatchSize,
 // IoU e NMS.
 #include "color_proposals.hpp"
 #include "hog.hpp"
@@ -15,11 +15,11 @@ namespace detector {
 
 inline const double kAspect = static_cast<double>(kPatchSize.width) / kPatchSize.height;
 
-// un blob colore ha quasi sempre una forma arbitraria (spesso solo la fascia arancione/gialla
-// del cono, non tutto il cono): schiacciarlo direttamente a kPatchSize introduce una
-// distorsione che il classificatore, addestrato su crop puliti dei box GT, non riconosce piu'
-// come cono (verificato: la recall a valle del classificatore su candidati con IoU>=0.3 con un
-// vero cono sale se il box viene prima riportato all'aspect ratio di training).
+// a color blob almost always has an arbitrary shape (often just the orange or yellow band of the
+// cone, not the whole cone): squashing it straight to kPatchSize introduces a distortion that the
+// classifier, trained on clean crops of the GT boxes, no longer reads as a cone (checked: the
+// recall downstream of the classifier, on candidates with IoU>=0.3 against a real cone, goes up if
+// the box is brought back to the training aspect ratio first).
 inline std::vector<cv::Rect> normalizeAspect(const std::vector<cv::Rect>& blobs, cv::Size imgSize, double scale = 1.0){
     std::vector<cv::Rect> out;
     for(const auto& b : blobs){

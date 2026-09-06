@@ -1,5 +1,5 @@
-// Sanity check usa-e-getta: verifica la convenzione di segno di RAW_OUTPUT per cv::ml::SVM
-// (predict normale vs raw) su qualche patch pos/neg nota, prima di fidarsi del segno in
+// Throwaway sanity check: works out the sign convention of RAW_OUTPUT for cv::ml::SVM
+// (plain predict against raw) on a few known pos/neg patches, before trusting the sign in
 // eval_cascade.cpp.
 #include "hog.hpp"
 #include <filesystem>

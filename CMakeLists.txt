@@ -19,6 +19,8 @@ add_executable(main
     src/color_proposals.cpp
     src/patches.cpp
     src/hog.cpp
+    src/classifier.cpp
+    src/segmentation.cpp
 )
 
 target_link_libraries(main ${OpenCV_LIBS} nlohmann_json::nlohmann_json ZLIB::ZLIB)

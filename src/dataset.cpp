@@ -8,33 +8,17 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <random>
 #include <set>
-#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
 
-namespace fs = std::filesystem;
-using json = nlohmann::json;
 
-namespace {
+using json = nlohmann::json;
 
 // --- reading/drawing Supervisely annotations (rectangles and bitmap masks) ---
 
-enum class AnnotationGeometry { Rectangle, Bitmap };
-
-// Represents either a rectangle, or a bitmap mask positioned at origin.
-struct Annotation {
-    AnnotationGeometry geometry = AnnotationGeometry::Rectangle;
-    cv::Point topLeft;
-    cv::Point bottomRight;
-    cv::Mat mask;
-    cv::Point origin;
-    std::string label;
-};
-
-std::vector<uchar> decodeBase64(const std::string& encoded){
+static std::vector<uchar> decodeBase64(const std::string& encoded){
     static const std::string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::vector<uchar> decoded;
     std::uint32_t accumulator = 0;
@@ -65,7 +49,7 @@ std::vector<uchar> decodeBase64(const std::string& encoded){
     return decoded;
 }
 
-std::vector<uchar> decompressZlib(const std::vector<uchar>& compressed){
+static std::vector<uchar> decompressZlib(const std::vector<uchar>& compressed){
     z_stream stream{};
     stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(compressed.data()));
     stream.avail_in = static_cast<uInt>(compressed.size());
@@ -97,7 +81,7 @@ std::vector<uchar> decompressZlib(const std::vector<uchar>& compressed){
     return decompressed;
 }
 
-cv::Mat decodeBitmapMask(const json& bitmap){
+static cv::Mat decodeBitmapMask(const json& bitmap){
     const std::vector<uchar> compressed = decodeBase64(bitmap.at("data").get<std::string>());
     if(compressed.empty())
     {
@@ -128,7 +112,7 @@ cv::Mat decodeBitmapMask(const json& bitmap){
     return mask;
 }
 
-std::vector<Annotation> readAnnotations(const fs::path& annotationPath){
+std::vector<Annotation> readAnnotations(const std::string& annotationPath){
     std::ifstream input(annotationPath);
     if(!input)
     {
@@ -177,7 +161,7 @@ std::vector<Annotation> readAnnotations(const fs::path& annotationPath){
     return annotations;
 }
 
-bool drawAnnotation(cv::Mat& image, const Annotation& annotation){
+static bool drawAnnotation(cv::Mat& image, const Annotation& annotation){
     if(annotation.geometry == AnnotationGeometry::Bitmap)
     {
         const cv::Rect maskBounds(annotation.origin.x, annotation.origin.y, annotation.mask.cols, annotation.mask.rows);
@@ -228,52 +212,72 @@ bool drawAnnotation(cv::Mat& image, const Annotation& annotation){
     return true;
 }
 
-} // namespace
-
 void dataLoader(){
-    const fs::path destination = "../dataset";
-    if(fs::exists(destination))
+    const std::filesystem::path destination = "../dataset";
+    if(std::filesystem::exists(destination))
     {
         std::cout << "The folder already exists, deleting..." << std::endl;
-        fs::remove_all(destination);
+        std::filesystem::remove_all(destination);
     }
-    if(!fs::create_directory(destination))
+    if(!std::filesystem::create_directory(destination))
     {
         throw std::runtime_error("Failed to create directory");
     }
 
-    // the two source trees partially overlap; on a duplicate filename the first wins (emplace doesn't overwrite)
-    const fs::path sources[] = {"../fsoco_segmentation_train", "../fsoco_bounding_boxes_train"};
-
-    std::unordered_map<std::string, fs::path> imageFiles;
-    std::unordered_map<std::string, fs::path> jsonFiles;
-    for(const fs::path& source : sources)
+    // The test set is drawn from the same FSOCO folders, under the same file names. Letting those
+    // images into dataset/ would mean training on the test set, so they are skipped here, at the one
+    // point where dataset/ is built.
+    std::set<std::string> testImages;
+    const std::filesystem::path testDir = "../test_set/segmentation_test/img";
+    if(std::filesystem::exists(testDir))
     {
-        for(const auto& entry : fs::recursive_directory_iterator(source))
+        for(const auto& entry : std::filesystem::directory_iterator(testDir))
+        {
+            testImages.insert(entry.path().filename().string());
+        }
+        std::cout << "keeping " << testImages.size() << " test set images out of dataset/" << std::endl;
+    }
+    else
+    {
+        std::cout << "warning: " << testDir << " not found, cannot tell the test images apart" << std::endl;
+    }
+
+    // the two source trees partially overlap; on a duplicate filename the first wins (emplace doesn't overwrite)
+    const std::filesystem::path sources[] = {"../fsoco_segmentation_train", "../fsoco_bounding_boxes_train"};
+
+    std::unordered_map<std::string, std::filesystem::path> imageFiles;
+    std::unordered_map<std::string, std::filesystem::path> jsonFiles;
+    for(const std::filesystem::path& source : sources)
+    {
+        for(const auto& entry : std::filesystem::recursive_directory_iterator(source))
         {
             if(entry.is_directory()) continue;
+            const std::string name = entry.path().filename().string();
             const std::string ext = entry.path().extension().string();
             if(ext == ".jpg" || ext == ".jpeg" || ext == ".png")
             {
-                imageFiles.emplace(entry.path().filename().string(), entry.path());
+                if(testImages.count(name)) continue;
+                imageFiles.insert(std::make_pair(name, entry.path()));
             }
             else if(ext == ".json" && entry.path().filename() != "meta.json")
             {
-                jsonFiles.emplace(entry.path().stem().string(), entry.path());
+                if(testImages.count(entry.path().stem().string())) continue;
+                jsonFiles.insert(std::make_pair(entry.path().stem().string(), entry.path()));
             }
         }
     }
 
     std::vector<std::string> sharedKeys;
-    for(const auto& [stem, imagePath] : imageFiles)
+    std::unordered_map<std::string, std::filesystem::path>::const_iterator it;
+    for(it = imageFiles.begin(); it != imageFiles.end(); ++it)
     {
-        if(jsonFiles.count(stem))
+        if(jsonFiles.count(it->first))
         {
-            sharedKeys.push_back(stem);
+            sharedKeys.push_back(it->first);
         }
         else
         {
-            std::cout << "Missing JSON for source image: " << imagePath << std::endl;
+            std::cout << "Missing JSON for source image: " << it->second << std::endl;
         }
     }
     std::sort(sharedKeys.begin(), sharedKeys.end());
@@ -282,10 +286,10 @@ void dataLoader(){
     int fileNumber = 1;
     for(const std::string& key : sharedKeys)
     {
-        const fs::path& imagePath = imageFiles.at(key);
-        const fs::path& jsonPath = jsonFiles.at(key);
-        fs::copy(imagePath, destination / (std::to_string(fileNumber) + imagePath.extension().string()));
-        fs::copy(jsonPath, destination / (std::to_string(fileNumber) + ".json"));
+        const std::filesystem::path& imagePath = imageFiles.at(key);
+        const std::filesystem::path& jsonPath = jsonFiles.at(key);
+        std::filesystem::copy(imagePath, destination / (std::to_string(fileNumber) + imagePath.extension().string()));
+        std::filesystem::copy(jsonPath, destination / (std::to_string(fileNumber) + ".json"));
         fileNumber++;
     }
 
@@ -294,10 +298,10 @@ void dataLoader(){
 
 //makes a csv file with each image name and the corresponding bounding boxes
 void csvDatasetMaker(std::string datasetDir){
-    std::cout << "Creating CSV dataset from: " << datasetDir << std::endl;
-    std::ofstream csvFile("dataset.csv");
+    std::cout << "Creating ../data/dataset.csv from: " << datasetDir << std::endl;
+    std::ofstream csvFile("../data/dataset.csv");
 
-    for(const auto& entry : fs::directory_iterator{datasetDir})
+    for(const auto& entry : std::filesystem::directory_iterator{datasetDir})
     {
         if(entry.path().extension() != ".json") continue;
 
@@ -311,7 +315,7 @@ void csvDatasetMaker(std::string datasetDir){
         const std::vector<std::string> extensions = {".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG"};
         for(const auto& extension : extensions)
         {
-            if(fs::exists(entry.path().parent_path() / (entry.path().stem().string() + extension)))
+            if(std::filesystem::exists(entry.path().parent_path() / (entry.path().stem().string() + extension)))
             {
                 imageName = entry.path().stem().string() + extension;
                 break;
@@ -326,7 +330,7 @@ void csvDatasetMaker(std::string datasetDir){
         std::vector<Annotation> annotations;
         try
         {
-            annotations = readAnnotations(entry.path());
+            annotations = readAnnotations(entry.path().string());
         }
         catch(const std::exception& e)
         {
@@ -350,62 +354,28 @@ void csvDatasetMaker(std::string datasetDir){
     }
 }
 
-//splits the dataset in two, training and test, saving two different files with the indexes
-void makeSplit(std::string csvPath, std::string outDir, int devSize, double trainFrac, int seed){
-
-    std::set<std::string> imgNames;
-    std::ifstream csv(csvPath);
-    std::string line;
-
-    while(std::getline(csv, line))
-    {
-        if(line.empty()) continue;
-        std::stringstream ss(line);
-        std::string name;
-        std::getline(ss, name, ',');
-        imgNames.insert(name);
-    }
-
-    //deterministic ordering followed by shuffling
-    std::vector<std::string> names(imgNames.begin(), imgNames.end());
-    std::mt19937 rng(seed);
-    std::shuffle(names.begin(), names.end(), rng);
-
-    int n = std::min<int>(devSize, names.size());
-    int nTrain = static_cast<int>(n * trainFrac);
-
-    std::ofstream trainFile(outDir + "/train.txt");
-    std::ofstream testFile(outDir + "/test.txt");
-    for(int i = 0; i < n; ++i)
-    {
-        (i < nTrain ? trainFile : testFile) << names[i] << "\n";
-    }
-
-    std::cout << "train: " << nTrain << "   test: " << (n - nTrain) << std::endl;
-}
-
 void labeler(){
-    const fs::path datasetDir = "../dataset";
-    const fs::path labeledDir = "../labeled";
+    const std::filesystem::path datasetDir = "../dataset";
+    const std::filesystem::path labeledDir = "../labeled";
 
-    if(!fs::exists(datasetDir))
+    if(!std::filesystem::exists(datasetDir))
     {
         throw std::runtime_error("Dataset folder does not exist: " + datasetDir.string());
     }
 
-    if(fs::exists(labeledDir))
+    if(std::filesystem::exists(labeledDir))
     {
         std::cout << "The folder labeled already exists, deleting..." << std::endl;
-        fs::remove_all(labeledDir);
+        std::filesystem::remove_all(labeledDir);
     }
 
-    if(!fs::create_directory(labeledDir))
+    if(!std::filesystem::create_directory(labeledDir))
     {
         throw std::runtime_error("Failed to create labeled directory");
     }
 
-    std::vector<fs::path> imageFiles;
-    for(const auto& entry : fs::directory_iterator(datasetDir))
+    std::vector<std::filesystem::path> imageFiles;
+    for(const auto& entry : std::filesystem::directory_iterator(datasetDir))
     {
         if(!entry.is_regular_file()) continue;
 
@@ -423,11 +393,11 @@ void labeler(){
     size_t processedImages = 0;
     size_t skippedImages = 0;
 
-    for(const fs::path& imagePath : imageFiles)
+    for(const std::filesystem::path& imagePath : imageFiles)
     {
-        const fs::path jsonPath = datasetDir / (imagePath.stem().string() + ".json");
+        const std::filesystem::path jsonPath = datasetDir / (imagePath.stem().string() + ".json");
 
-        if(!fs::exists(jsonPath))
+        if(!std::filesystem::exists(jsonPath))
         {
             std::cout << "Missing annotation for image: " << imagePath.filename() << std::endl;
             ++skippedImages;
@@ -444,14 +414,14 @@ void labeler(){
 
         try
         {
-            const std::vector<Annotation> annotations = readAnnotations(jsonPath);
+            const std::vector<Annotation> annotations = readAnnotations(jsonPath.string());
 
             for(const Annotation& annotation : annotations)
             {
                 drawAnnotation(image, annotation);
             }
 
-            const fs::path outputPath = labeledDir / imagePath.filename();
+            const std::filesystem::path outputPath = labeledDir / imagePath.filename();
             if(!cv::imwrite(outputPath.string(), image))
             {
                 throw std::runtime_error("Failed to write output image: " + outputPath.string());

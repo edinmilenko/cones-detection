@@ -1,12 +1,12 @@
-// File a parte, non collegato a CMakeLists: primo passo della cascata a due stadi. Lo stadio 1
-// e' il classificatore lineare gia' allenato (data/svm_hog_sgd_proposal.yml, SVMSGD su HOG), usato
-// a una soglia BASSA e permissiva solo per abbattere il numero di candidati (da ~18500/immagine
-// a molti meno) prima di passare i sopravvissuti a un secondo classificatore piu' espressivo.
-// Questo tool serve solo a scegliere la soglia: per un range di soglie, misura quanti candidati
-// sopravvivono in media per immagine e quanta "coverage" (GT coperte da un candidato sopra
-// soglia, IoU>=0.3) resta — il compromesso da bilanciare prima di allenare lo stadio 2.
+// Standalone file, not wired into CMakeLists: first step of the two-stage cascade. Stage 1 is the
+// linear classifier already trained (data/svm_hog_sgd_proposal.yml, SVMSGD over HOG), run at a LOW,
+// permissive threshold whose only job is to cut the number of candidates down (from ~18500 per
+// image to far fewer) before handing the survivors to a second, more expressive classifier.
+// This tool only picks that threshold: over a range of thresholds it measures how many candidates
+// survive per image on average and how much "coverage" is left (GT covered by a candidate above
+// threshold, IoU>=0.3) — the trade-off to settle before training stage 2.
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I/usr/include/opencv4 \
 //     ../tools/cascade_stage1_sweep.cpp ../src/hog.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_objdetect -lopencv_ml \
@@ -112,13 +112,13 @@ int main(int argc, char** argv){
         }
     }
 
-    std::cout << "immagini: " << nImg << ", candidati/immagine (nessun filtro): " << (double(totalCands)/nImg) << "\n";
-    std::cout << "coverage senza filtro (IoU>=0.3): " << (100.0*nCovered/nGt) << "%\n\n";
+    std::cout << "images: " << nImg << ", candidates/image (unfiltered): " << (double(totalCands)/nImg) << "\n";
+    std::cout << "coverage unfiltered (IoU>=0.3): " << (100.0*nCovered/nGt) << "%\n\n";
     for(size_t t = 0; t < thresholds.size(); t++){
         std::cout << "thr=" << thresholds[t]
-                   << ": sopravvissuti/immagine=" << (double(survivors[t])/nImg)
-                   << "  coverage-con-filtro=" << (100.0*coveredSurv[t]/nGt) << "%"
-                   << "  (" << (100.0*coveredSurv[t]/std::max<long long>(nCovered,1)) << "% di quella senza filtro)\n";
+                   << ": survivors/image=" << (double(survivors[t])/nImg)
+                   << "  coverage-after-filter=" << (100.0*coveredSurv[t]/nGt) << "%"
+                   << "  (" << (100.0*coveredSurv[t]/std::max<long long>(nCovered,1)) << "% of the unfiltered one)\n";
     }
 
     return 0;

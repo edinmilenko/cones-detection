@@ -1,8 +1,8 @@
-// File a parte, non collegato a CMakeLists: valuta la pipeline di detection completa
-// (colorProposals + normalizzazione aspect ratio + classificazione + soglia + NMS) contro le
-// bbox reali, su un campione di immagini di test, per un dato modello e una serie di soglie.
+// Standalone file, not wired into CMakeLists: scores the complete detection pipeline
+// (colorProposals + aspect ratio normalization + classification + threshold + NMS) against the
+// against the real bboxes, over a sample of test images, for one model and a series of thresholds.
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I../tools -I/usr/include/opencv4 \
 //     ../tools/eval_detector.cpp ../src/hog.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_objdetect -lopencv_ml \
@@ -23,7 +23,7 @@
 
 int main(int argc, char** argv){
     if(argc < 2){
-        std::cerr << "uso: eval_detector <model.yml> [numero_immagini] [seed]\n";
+        std::cerr << "uso: eval_detector <model.yml> [numero_images] [seed]\n";
         return 1;
     }
     std::string modelPath = argv[1];
@@ -67,7 +67,7 @@ int main(int argc, char** argv){
     float shift = svm->getShift();
     cv::HOGDescriptor hog = makeHog();
 
-    // cache: candidati + score raw per ogni immagine, cosi' lo sweep sulle soglie non ricalcola l'HOG ogni volta
+    // cache: candidates + raw scores per image, so the threshold sweep does not recompute HOG each time
     struct ImgData { std::vector<cv::Rect> boxes; std::vector<float> scores; std::vector<cv::Rect> gtBoxes; };
     std::vector<ImgData> data;
 
@@ -98,7 +98,7 @@ int main(int argc, char** argv){
         data.push_back(std::move(d));
     }
 
-    std::cout << "immagini valutate: " << data.size() << " (modello: " << modelPath << ", mode=" << mode << ")\n";
+    std::cout << "images evaluated: " << data.size() << " (model: " << modelPath << ", mode=" << mode << ")\n";
 
     for(float thr : {-10.f, 0.f, 10.f, 20.f, 30.f, 40.f, 50.f}){
         long long tp = 0, fp = 0, fn = 0;

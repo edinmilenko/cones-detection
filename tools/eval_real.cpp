@@ -1,9 +1,9 @@
-// File a parte, non collegato a CMakeLists: come eval_cascade.cpp, ma puntato al vero test set
+// Standalone file, not wired into CMakeLists: like eval_cascade.cpp, but pointed at the real test set
 // esterno (test_set/segmentation_test, convertito in CSV da convert_supervisely_to_csv.py) invece
-// del test set sintetico (dataset/ + data/test.txt) usato per tutto il tuning fin qui. Verifica
-// se le soglie/parametri tarati sul dataset sintetico reggono su immagini reali.
+// instead of the synthetic one (dataset/ + data/test.txt) used for all the tuning so far. Checks
+// whether the thresholds and parameters tuned on the synthetic dataset hold up on real images.
 //
-// Compilazione ad-hoc (dalla cartella build/):
+// Ad-hoc build (from the build/ folder):
 //   g++ -std=gnu++17 -O2 -I../include -I../tools -I/usr/include/opencv4 \
 //     ../tools/eval_real.cpp ../src/hog.cpp ../src/color_proposals.cpp ../src/utils.cpp \
 //     -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_objdetect -lopencv_ml \
@@ -61,7 +61,7 @@ int main(int argc, char** argv){
         const auto& gtBoxes = it->second;
 
         cv::Mat bgr = cv::imread(datasetDir + "/" + imgName, cv::IMREAD_COLOR);
-        if(bgr.empty()){ std::cerr << "immagine non trovata: " << imgName << "\n"; continue; }
+        if(bgr.empty()){ std::cerr << "image not found: " << imgName << "\n"; continue; }
         cv::Mat gray; cv::cvtColor(bgr, gray, cv::COLOR_BGR2GRAY);
 
         std::vector<cv::Rect> cands = colorProposals(bgr);
@@ -98,10 +98,10 @@ int main(int argc, char** argv){
         data.push_back(std::move(d));
     }
 
-    std::cout << "=== TEST SET REALE (" << data.size() << " immagini, " << nGt << " GT box) ===\n";
-    std::cout << "candidati/immagine: " << (double(totalCands)/data.size()) << "\n";
-    std::cout << "coverage (IoU>=0.3, nessun classificatore): " << (100.0*nCovered/nGt) << "%\n";
-    std::cout << "sopravvissuti allo stadio 1/immagine: " << (double(survivedStage1)/data.size()) << "\n\n";
+    std::cout << "=== REAL TEST SET (" << data.size() << " images, " << nGt << " GT box) ===\n";
+    std::cout << "candidates/image: " << (double(totalCands)/data.size()) << "\n";
+    std::cout << "coverage (IoU>=0.3, no classifier): " << (100.0*nCovered/nGt) << "%\n";
+    std::cout << "survivors of stage 1/image: " << (double(survivedStage1)/data.size()) << "\n\n";
 
     for(float thr2 : {-0.01f, -0.005f, 0.f, 0.005f, 0.01f, 0.015f, 0.02f, 0.03f, 0.05f, 0.08f, 0.1f, 0.13f, 0.15f, 0.18f, 0.2f, 0.25f, 0.3f}){
         long long tp = 0, fp = 0, fn = 0;
