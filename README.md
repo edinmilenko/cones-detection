@@ -75,4 +75,4 @@ You only need this to rebuild the models. Unzip `fsoco_bounding_boxes_train/` an
 
 ## Authors
 
-Nicola Ranzolin, Edin Milenko, Alessandro Martini
+Edin Milenko, Alessandro Martini, Nicola Ranzolin
