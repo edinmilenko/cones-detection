@@ -1,3 +1,4 @@
+//Author: Edin Milenko
 #pragma once
 
 #include <opencv2/opencv.hpp>

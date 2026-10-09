@@ -1,6 +1,7 @@
+//Author: Edin Milenko
 #include "utils.hpp"
 
-//returns iou
+// How much two boxes overlap: shared area over the area they cover together
 double calculateIoU(cv::Rect a, cv::Rect b){
     int intersectionArea = (a & b).area();
     if(intersectionArea == 0)
@@ -10,19 +11,20 @@ double calculateIoU(cv::Rect a, cv::Rect b){
     return double(intersectionArea) / (a.area() + b.area() - intersectionArea);
 }
 
-//non-maximum suppression: sort by score descending, then greedily keep a box only if it
-//doesn't overlap (IoU > iouThr) any box already kept
+//sort by score, then greedily keep a box only if it doesn't overlap any box already kept
 std::vector<int> nonMaxSuppression(const std::vector<cv::Rect>& boxes, const std::vector<float>& scores, double iouThr){
     std::vector<int> order(boxes.size());
     for(size_t i = 0; i < order.size(); i++)
     {
         order[i] = (int)i;
     }
+    // best score first
     std::sort(order.begin(), order.end(), [&](int a, int b){ return scores[a] > scores[b]; });
 
     std::vector<int> kept;
     for(int idx : order)
     {
+        // a box survives only if it does not step on one we already kept
         bool overlaps = false;
         for(int k : kept)
         {
@@ -40,28 +42,32 @@ std::vector<int> nonMaxSuppression(const std::vector<cv::Rect>& boxes, const std
     return kept;
 }
 
-//what the greedy matching of one class produces: each detection takes the free GT it overlaps
-//most, above iouThr. precisions/recalls are the running curve, which only the AP looks at.
+//each detection takes the free GT it overlaps most, above iouThr
 struct ClassMatch {
-    long long tp = 0, fp = 0, fn = 0;
+    int tp = 0, fp = 0, fn = 0;
     std::vector<double> precisions, recalls;
 };
 
+// Matches detections and real cones of one class, the step every metric is built on
 static ClassMatch matchOneClass(const std::vector<Pred>& preds, const std::vector<GT>& ground, int cls, double iouThr){
     ClassMatch m;
+    // the real cones of this class
     std::vector<const GT*> classGts;
     for(const GT& g : ground)
     {
         if(g.cls == cls) classGts.push_back(&g);
     }
 
+    // and our detections of this class
     std::vector<Pred> classPreds;
     for(const Pred& p : preds)
     {
         if(p.cls == cls) classPreds.push_back(p);
     }
+    // from the most confident down, so the best detection gets the first pick
     std::sort(classPreds.begin(), classPreds.end(), [](const Pred& a, const Pred& b){ return a.score > b.score; });
 
+    // a cone already taken cannot be matched again, two boxes on it are one hit and one mistake
     std::vector<bool> matched(classGts.size(), false);
     for(const Pred& p : classPreds)
     {
@@ -69,6 +75,7 @@ static ClassMatch matchOneClass(const std::vector<Pred>& preds, const std::vecto
         int bestIdx = -1;
         for(size_t j = 0; j < classGts.size(); j++)
         {
+            // only free cones, and only in the same image
             if(matched[j] || classGts[j]->imgName != p.imgName) continue;
             double iou = calculateIoU(p.bbox, classGts[j]->bbox);
             if(iou > bestIou)
@@ -78,6 +85,7 @@ static ClassMatch matchOneClass(const std::vector<Pred>& preds, const std::vecto
             }
         }
 
+        // enough overlap and it is a hit, otherwise it is a box on nothing
         if(bestIou >= iouThr)
         {
             m.tp++;
@@ -88,13 +96,23 @@ static ClassMatch matchOneClass(const std::vector<Pred>& preds, const std::vecto
             m.fp++;
         }
 
+        // precision and recall as they stand after this detection, the curve the AP needs
         m.precisions.push_back(double(m.tp) / (m.tp + m.fp));
-        m.recalls.push_back(classGts.empty() ? 0.0 : double(m.tp) / classGts.size());
+        if(classGts.empty())
+        {
+            m.recalls.push_back(0.0);
+        }
+        else
+        {
+            m.recalls.push_back(double(m.tp) / classGts.size());
+        }
     }
-    m.fn = (long long)classGts.size() - m.tp;
+    // the cones nobody matched are the ones we missed
+    m.fn = (int)classGts.size() - m.tp;
     return m;
 }
 
+// The F1 of each class, averaged without weights: a rare class counts as much as a common one
 double macroF1(const std::vector<Pred>& preds, const std::vector<GT>& ground, const std::vector<int>& classes, double iouThr){
     double sum = 0.0;
     int counted = 0;
@@ -104,18 +122,26 @@ double macroF1(const std::vector<Pred>& preds, const std::vector<GT>& ground, co
         const ClassMatch m = matchOneClass(preds, ground, cls, iouThr);
         if(m.tp + m.fn == 0) continue; //class absent from the ground truth, left out of the average
 
-        double precision = (m.tp + m.fp) > 0 ? double(m.tp) / (m.tp + m.fp) : 0.0;
+        double precision = 0.0;
+        if(m.tp + m.fp > 0)
+        {
+            precision = double(m.tp) / (m.tp + m.fp);
+        }
         double recall = double(m.tp) / (m.tp + m.fn);
-        double f1 = (precision + recall) > 0 ? 2 * precision * recall / (precision + recall) : 0.0;
+
+        double f1 = 0.0;
+        if(precision + recall > 0)
+        {
+            f1 = 2 * precision * recall / (precision + recall);
+        }
 
         sum += f1;
         counted++;
     }
-    return counted ? sum / counted : 0.0;
+    if(counted == 0) return 0.0;
+    return sum / counted;
 }
 
-//area under the precision/recall curve, sampled at 101 recall levels after making the precision
-//monotonically decreasing (the COCO convention)
 static double averagePrecision(const std::vector<Pred>& preds, const std::vector<GT>& ground, int cls, double iouThr){
     ClassMatch m = matchOneClass(preds, ground, cls, iouThr);
     if(m.tp + m.fn == 0) return -1.0;
@@ -145,6 +171,7 @@ static double averagePrecision(const std::vector<Pred>& preds, const std::vector
     return sum / 101.0;
 }
 
+// The AP averaged over the classes and over ten thresholds, from 0.50 to 0.95 in steps of 0.05
 double meanAveragePrecision(const std::vector<Pred>& preds, const std::vector<GT>& ground, const std::vector<int>& classes){
     double sum = 0.0;
     int counted = 0;
@@ -166,9 +193,11 @@ double meanAveragePrecision(const std::vector<Pred>& preds, const std::vector<GT
         sum += classSum / classCount;
         counted++;
     }
-    return counted ? sum / counted : 0.0;
+    if(counted == 0) return 0.0;
+    return sum / counted;
 }
 
+// Counts the pixels of one image into the running totals, class by class
 void PixelIoU::add(const cv::Mat& predLabels, const cv::Mat& gtLabels, const std::vector<int>& classes){
     for(int cls : classes)
     {
@@ -177,6 +206,7 @@ void PixelIoU::add(const cv::Mat& predLabels, const cv::Mat& gtLabels, const std
         cv::Mat intersection;
         cv::bitwise_and(predMask, gtMask, intersection);
 
+        // pixels where we said the right class, and the two kinds of mistake around them
         long long shared = cv::countNonZero(intersection);
         tp[cls] += shared;
         fp[cls] += cv::countNonZero(predMask) - shared;
@@ -184,6 +214,7 @@ void PixelIoU::add(const cv::Mat& predLabels, const cv::Mat& gtLabels, const std
     }
 }
 
+// One IoU per class over the whole test set, then the average: a missed cone weighs here too
 double PixelIoU::mean(const std::vector<int>& classes) const{
     double sum = 0.0;
     int counted = 0;
@@ -196,42 +227,7 @@ double PixelIoU::mean(const std::vector<int>& classes) const{
         sum += double(tp.at(cls)) / unionArea;
         counted++;
     }
-    return counted ? sum / counted : 0.0;
+    if(counted == 0) return 0.0;
+    return sum / counted;
 }
 
-double maskIoU(const cv::Mat& predictedMask, const cv::Mat& groundTruthMask)
-{
-    cv::Mat intersectionMask, unionMask;
-    cv::bitwise_and(predictedMask, groundTruthMask, intersectionMask);
-    cv::bitwise_or(predictedMask, groundTruthMask, unionMask);
-
-    const double intersectionArea = cv::countNonZero(intersectionMask);
-    const double unionArea = cv::countNonZero(unionMask);
-
-    if(unionArea == 0.0)
-    {
-        return 0.0;
-    }
-    return intersectionArea / unionArea;
-}
-
-//calculates the recall of the chosen candidates
-double candidateRecall(const std::vector<cv::Rect>& proposals, const std::vector<cv::Rect>& groundTruth, double iouThr){
-    if(groundTruth.empty())
-    {
-        return -1.0; // nothing to measure
-    }
-    int covered = 0;
-    for(const cv::Rect& gt : groundTruth)
-    {
-        for(const cv::Rect& p : proposals)
-        {
-            if(calculateIoU(p, gt) >= iouThr)
-            {
-                ++covered;
-                break;
-            }
-        }
-    }
-    return double(covered) / groundTruth.size();
-}

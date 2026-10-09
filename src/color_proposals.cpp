@@ -1,3 +1,4 @@
+//Author: Alessandro Martini
 #include "color_proposals.hpp"
 #include "hog.hpp"
 #include <algorithm>
@@ -53,23 +54,22 @@ static cv::Mat colorMask(const cv::Mat& imgBGR ){
     return mask;
 }
 
-//per blob, generate boxes at a few fixed heights centered on the centroid: a blob's own
-//bounding box is often the wrong size (small/far cones are just a fragment of the cone)
-static const std::vector<double> kProposalHeights = {10, 18, 30, 50, 85, 140, 220}; //tuned on GT height percentiles
-static const int kMinBlobAreaPx = 3;
-static const double kAspect = static_cast<double>(kPatchSize.width) / kPatchSize.height; // w/h
+//per blob, generate boxes at a few fixed heights centered on the centroid
+static const std::vector<double> PROPOSAL_HEIGHTS = {10, 18, 30, 50, 85, 140, 220};
+static const int MIN_BLOB_AREA = 3;
+static const double ASPECT_RATIO = static_cast<double>(PATCH_SIZE.width) / PATCH_SIZE.height; // w/h
 
 static std::vector<cv::Rect> centeredMultiScale(const cv::Rect& blob, cv::Size imgSize){
     std::vector<cv::Rect> out;
     double cx = blob.x + blob.width / 2.0;
     double cy = blob.y + blob.height / 2.0;
-    for(double h : kProposalHeights)
+    for(double h : PROPOSAL_HEIGHTS)
     {
-        double w = h * kAspect;
-        int nx = static_cast<int>(std::lround(cx - w / 2.0));
-        int ny = static_cast<int>(std::lround(cy - h / 2.0));
-        int nw = static_cast<int>(std::lround(w));
-        int nh = static_cast<int>(std::lround(h));
+        double w = h * ASPECT_RATIO;
+        int nx = std::lround(cx - w / 2.0);
+        int ny = std::lround(cy - h / 2.0);
+        int nw = std::lround(w);
+        int nh = std::lround(h);
         nx = std::max(0, nx);
         ny = std::max(0, ny);
         nw = std::min(nw, imgSize.width - nx);
@@ -97,7 +97,7 @@ static std::vector<cv::Rect> findCandidateBoxes(const cv::Mat& mask, cv::Size im
     {
         cv::Rect r = cv::boundingRect(elem);
         if(r.area() > maxArea) continue;
-        if(r.area() < kMinBlobAreaPx) continue;
+        if(r.area() < MIN_BLOB_AREA) continue;
         auto generated = centeredMultiScale(r, imgSize);
         candidates.insert(candidates.end(), generated.begin(), generated.end());
     }

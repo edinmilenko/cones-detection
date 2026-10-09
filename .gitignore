@@ -1,15 +1,9 @@
-CMakeFiles/
-dataset/
-srcOLD/
 build/
-data/
-debug/
+dataset/
 fsoco_bounding_boxes_train/
 fsoco_segmentation_train/
-labeled/
-segmentation_test
+segmentation_test/
+test_set/
+data/patches/
+data/detect_test/
 .DS_Store
-
-# session/tuning working notes, not needed to build or use the pipeline
-PROGRESS_FASE4.md
-tuning_log.md

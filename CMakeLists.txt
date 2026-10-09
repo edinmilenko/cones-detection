@@ -4,7 +4,6 @@ project(cones_detection)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(nlohmann_json REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(ZLIB REQUIRED)
 
@@ -23,5 +22,5 @@ add_executable(main
     src/segmentation.cpp
 )
 
-target_link_libraries(main ${OpenCV_LIBS} nlohmann_json::nlohmann_json ZLIB::ZLIB)
+target_link_libraries(main ${OpenCV_LIBS} ZLIB::ZLIB)
 

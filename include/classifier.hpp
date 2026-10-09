@@ -1,3 +1,4 @@
+//Author: Edin Milenko
 #pragma once
 
 #include <string>
@@ -15,6 +16,5 @@ std::vector<int> classifier(const cv::Mat& image, const std::vector<cv::Rect>& b
 
 ConeClass classifyOrangeCone(const cv::Mat& hsv_roi);
 
-// Label and BGR color used to draw a class on the detection output
 std::string className(int predictedClass);
 cv::Scalar classColor(int predictedClass);
